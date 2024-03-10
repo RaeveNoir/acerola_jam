@@ -106,8 +106,6 @@ fn window_updates(
     mut closed_events: EventReader<WindowCloseRequested>,
     mut focused_events: EventReader<WindowFocused>,
     mut moved_events: EventReader<WindowMoved>,
-    // mut entered_events: EventReader<CursorEntered>,
-    // mut left_events: EventReader<CursorLeft>,
     mut primary_window_q: Query<&mut Window, With<PrimaryWindow>>,
     mut fake_window_q: Query<&mut Window, Without<PrimaryWindow>>,
     mut cameras: Query<(&Camera, &GlobalTransform, &mut OrthographicProjection), With<MainCamera>>,
@@ -146,13 +144,14 @@ fn window_updates(
             // primary_window.resolution.set(400., 300.);
             global.configured = true;
         } else if !global.resized {
-            primary_window.resolution.set(
-                global.monitor_resolution.x - 2.0,
-                global.monitor_resolution.y,
-            );
             fake_window.resolution.set(
-                global.monitor_resolution.x / 2.0,
-                global.monitor_resolution.y / 2.0,
+                global.monitor_resolution.x / (4.0 / 3.0),
+                global.monitor_resolution.y / (4.0 / 3.0),
+            );
+            primary_window.resolution.set(
+                // This tiny shave prevents a weird bug with trying to do borderless fullscreen instead
+                global.monitor_resolution.x - 0.01,
+                global.monitor_resolution.y,
             );
             for mut camera in cameras.iter_mut() {
                 camera.2.scale = global.camera_scale;
@@ -163,8 +162,8 @@ fn window_updates(
     for event in moved_events.read() {
         fake_window.position = WindowPosition::At(
             (
-                (global.monitor_resolution.x / 4.0 - global.decoration_offset.x) as i32,
-                (global.monitor_resolution.y / 4.0 - global.decoration_offset.y) as i32,
+                (global.monitor_resolution.x / (8.0) - global.decoration_offset.x) as i32,
+                (global.monitor_resolution.y / (8.0) - global.decoration_offset.y) as i32,
             )
                 .into(),
         );
