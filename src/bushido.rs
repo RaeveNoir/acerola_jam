@@ -449,10 +449,13 @@ fn player_sprite_states(
                 anim.timer.reset();
                 anim.timer.set_duration(Duration::from_secs_f32(rate));
                 anim.timer.unpause();
-                if anim.current == anim.last {
+                if anim.current >= anim.last {
                     anim.current = anim.first
                 } else {
                     anim.current += 1
+                }
+                if top_state_ref.is_changed() {
+                    anim.current = anim.first + anim.offset as usize
                 }
             } else {
                 anim.timer.reset();
@@ -481,7 +484,7 @@ fn player_sprite_states(
                     anim.first = 1;
                     anim.last = 4;
                     anim.speed = 3.0 + 6.0 * velocity;
-                    anim.offset = 0.0
+                    anim.offset = 2.0
                 }
             }
         } else {
@@ -496,15 +499,18 @@ fn player_sprite_states(
                 anim.timer.reset();
                 anim.timer.set_duration(Duration::from_secs_f32(rate));
                 anim.timer.unpause();
-                if anim.current == anim.last {
+                if anim.current >= anim.last {
                     anim.current = anim.first
                 } else {
                     anim.current += 1
                 }
+                if bottom_state_ref.is_changed() {
+                    anim.current = anim.first + anim.offset as usize
+                }
             } else {
                 anim.timer.reset();
                 anim.timer.pause();
-                anim.current = anim.first
+                anim.current = anim.first;
             }
         }
 

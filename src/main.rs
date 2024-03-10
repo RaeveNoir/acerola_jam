@@ -194,8 +194,8 @@ fn window_updates(
         .map(|ray| ray.origin.truncate())
     {
         global.cursor_position = (
-            position.x + global.monitor_resolution.x / (4.0 / global.camera_scale),
-            position.y - global.monitor_resolution.y / (4.0 / global.camera_scale),
+            position.x + global.monitor_resolution.x / (8.0 / global.camera_scale),
+            position.y - global.monitor_resolution.y / (8.0 / global.camera_scale),
         )
             .into();
         global.close_timer.reset();
@@ -211,123 +211,31 @@ fn window_updates(
 #[derive(Component)]
 struct Testball;
 
-fn testball_setup(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-) {
-    let top_texture: Handle<Image> = asset_server.load("embedded://PlayerTop.png");
-    let top_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
-        Vec2::splat(20.0),
-        5,
-        1,
-        None,
-        None,
-    ));
-    let bottom_texture: Handle<Image> = asset_server.load("embedded://PlayerBottom.png");
-    let bottom_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
-        Vec2::splat(20.0),
-        5,
-        1,
-        None,
-        None,
-    ));
+fn testball_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+    let texture: Handle<Image> = asset_server.load("embedded://samurai.png");
 
     commands.spawn((
         Testball,
-        AnimationController {
-            first: 0,
-            last: 1,
-            speed: 6.0,
-            offset: 0.0,
-        },
         SpriteBundle {
             sprite: Sprite {
                 flip_x: false,
                 ..Default::default()
             },
-            texture: top_texture.clone(),
+            texture: texture.clone(),
             transform: Transform::from_scale(Vec3::splat(2.0))
                 .with_translation(Vec3::new(0.0, 0.0, 2.0)),
             ..default()
-        },
-        TextureAtlas {
-            layout: top_layout.clone(),
-            index: 0,
-        },
-    ));
-    commands.spawn((
-        Testball,
-        AnimationController {
-            first: 1,
-            last: 4,
-            speed: 6.0,
-            offset: 0.0,
-        },
-        SpriteBundle {
-            texture: bottom_texture.clone(),
-            transform: Transform::from_scale(Vec3::splat(2.0))
-                .with_translation(Vec3::new(0.0, 0.0, 1.0)),
-            ..default()
-        },
-        TextureAtlas {
-            layout: bottom_layout.clone(),
-            index: 0,
-        },
-    ));
-    commands.spawn((
-        Testball,
-        AnimationController {
-            first: 0,
-            last: 1,
-            speed: 6.0,
-            offset: 1.0,
-        },
-        SpriteBundle {
-            sprite: Sprite {
-                flip_x: false,
-                ..Default::default()
-            },
-            texture: top_texture,
-            transform: Transform::from_scale(Vec3::splat(2.0))
-                .with_translation(Vec3::new(60.0, 0.0, 2.0)),
-            ..default()
-        },
-        TextureAtlas {
-            layout: top_layout,
-            index: 0,
-        },
-    ));
-    commands.spawn((
-        Testball,
-        AnimationController {
-            first: 1,
-            last: 4,
-            speed: 6.0,
-            offset: 1.0,
-        },
-        SpriteBundle {
-            texture: bottom_texture,
-            transform: Transform::from_scale(Vec3::splat(2.0))
-                .with_translation(Vec3::new(60.0, 0.0, 1.0)),
-            ..default()
-        },
-        TextureAtlas {
-            layout: bottom_layout,
-            index: 0,
         },
     ));
 }
 
 fn testball_update(
     time: Res<Time>,
-    mut balls: Query<(&mut TextureAtlas, &mut Transform, &mut AnimationController), With<Testball>>,
+    mut balls: Query<&mut Transform, With<Testball>>,
     global: Res<GameGlobal>,
 ) {
-    for (mut sprite, transform, animate) in balls.iter_mut() {
-        sprite.index = ((time.elapsed_seconds_wrapped() * animate.speed + animate.offset)
-            % (animate.last as f32 - animate.first as f32 + 1.0)) as usize
-            + animate.first;
+    for mut transform in balls.iter_mut() {
+        transform.translation = global.cursor_position.extend(0.0);
     }
 }
 
@@ -396,9 +304,10 @@ fn main() {
                 .set(ImagePlugin::default_nearest()),
         )
         .add_plugins(EmbeddedAssetPlugin::default())
-        // .add_plugins(InputManagerPlugin::<Action>::default())
         .add_systems(Startup, (set_up_windows,))
         .add_systems(Update, (window_updates, decoration_offset, close_button))
+        .add_systems(Startup, testball_setup)
+        .add_systems(Update, testball_update)
         .add_plugins(BushidoPlugin)
         .run();
 }
