@@ -7,7 +7,9 @@ edition = "2021"
 bevy = { version = "0.13.0" }
 bevy_cursor = "0.3.0"
 bevy_embedded_assets = "0.10.0"
+bitflags = "2.4.2"
 leafwing-input-manager = "0.13.3"
+winit = "0.29.14"
 
 [dev-dependencies]
 bevy = { version = "0.13.0", features = ["dynamic_linking"] }

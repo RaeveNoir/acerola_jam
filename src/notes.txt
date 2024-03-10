@@ -1,0 +1,2 @@
+mouseclick slash needs to be separate from gamepad slash
+	former is toward mouse, latter is current or latest joystick direction greater than small magnitude
