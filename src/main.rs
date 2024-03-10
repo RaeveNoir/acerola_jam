@@ -1,5 +1,8 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_variables))]
+#![windows_subsystem = "windows"]
 use bevy::app::AppExit;
+use bevy::audio::AudioPlugin;
+use bevy::audio::SpatialScale;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::camera::RenderTarget;
@@ -16,6 +19,9 @@ use bevy::winit::WinitWindows;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bitflags::bitflags;
 use bushido::BushidoPlugin;
+use winit::window::Icon;
+
+const AUDIO_SCALE: f32 = 1.0 / 600.0;
 
 mod bushido;
 
@@ -27,9 +33,11 @@ struct GameGlobal {
     camera_scale: f32,
     configured: bool,
     resized: bool,
+    ready: bool,
     close_timer: Timer,
     close_enabled: bool,
     cursor_position: Vec2,
+    gamepad: bool,
 }
 
 #[derive(Component)]
@@ -57,9 +65,11 @@ fn set_up_windows(mut commands: Commands) {
         camera_scale: 1.0,
         configured: false,
         resized: false,
+        ready: false,
         close_timer: Timer::new(Duration::from_secs(3), TimerMode::Once),
         close_enabled: true,
         cursor_position: (0., 0.).into(),
+        gamepad: false,
     });
 
     let fake_window = Window {
@@ -156,6 +166,7 @@ fn window_updates(
             for mut camera in cameras.iter_mut() {
                 camera.2.scale = global.camera_scale;
             }
+            primary_window.visible = true;
         }
     }
 
@@ -212,7 +223,7 @@ fn window_updates(
 struct Testball;
 
 fn testball_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    let texture: Handle<Image> = asset_server.load("embedded://samurai.png");
+    let texture: Handle<Image> = asset_server.load("embedded://testball.png");
 
     commands.spawn((
         Testball,
@@ -249,12 +260,19 @@ bitflags! {
 }
 
 fn decoration_offset(windows: NonSend<WinitWindows>, mut global: ResMut<GameGlobal>) {
-    for window in windows.windows.values() {
-        if window.is_decorated() {
-            let outer = window.outer_position().unwrap();
-            let inner = window.inner_position().unwrap();
-            global.decoration_offset.x = (inner.x - outer.x) as f32;
-            global.decoration_offset.y = (inner.y - outer.y) as f32;
+    if !global.ready {
+        for window in windows.windows.values() {
+            if window.is_decorated() {
+                let outer = window.outer_position().unwrap();
+                let inner = window.inner_position().unwrap();
+                global.decoration_offset.x = (inner.x - outer.x) as f32;
+                global.decoration_offset.y = (inner.y - outer.y) as f32;
+                if global.decoration_offset.x > 0.0 {
+                    window
+                        .set_window_icon(Some(Icon::from_rgba(vec![0; 4 * 4 * 4], 4, 4).unwrap()));
+                    global.ready = true;
+                }
+            }
         }
     }
 }
@@ -286,6 +304,7 @@ fn main() {
                         resizable: false,
                         decorations: false,
                         focused: false,
+                        visible: false,
                         window_level: WindowLevel::AlwaysOnTop,
                         mode: WindowMode::BorderlessFullscreen,
                         cursor: Cursor {
@@ -301,13 +320,17 @@ fn main() {
                     level: bevy::log::Level::DEBUG,
                     ..default()
                 })
-                .set(ImagePlugin::default_nearest()),
+                .set(ImagePlugin::default_nearest())
+                .set(AudioPlugin {
+                    default_spatial_scale: SpatialScale::new_2d(AUDIO_SCALE),
+                    ..default()
+                }),
         )
         .add_plugins(EmbeddedAssetPlugin::default())
         .add_systems(Startup, (set_up_windows,))
         .add_systems(Update, (window_updates, decoration_offset, close_button))
-        .add_systems(Startup, testball_setup)
-        .add_systems(Update, testball_update)
+        // .add_systems(Startup, testball_setup)
+        // .add_systems(Update, testball_update)
         .add_plugins(BushidoPlugin)
         .run();
 }
