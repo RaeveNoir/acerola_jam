@@ -1,12 +1,9 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_variables))]
-use bitflags::bitflags;
-use bevy::utils::Duration;
-use bevy::winit::WinitWindows;
 use bevy::app::AppExit;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy::render::camera::RenderTarget;
+use bevy::utils::Duration;
 use bevy::window::Cursor;
 use bevy::window::PrimaryWindow;
 use bevy::window::WindowCloseRequested;
@@ -15,6 +12,9 @@ use bevy::window::WindowLevel;
 use bevy::window::WindowMode;
 use bevy::window::WindowRef;
 use bevy::window::WindowResolution;
+use bevy::winit::WinitWindows;
+use bevy_embedded_assets::EmbeddedAssetPlugin;
+use bitflags::bitflags;
 use bushido::BushidoPlugin;
 
 mod bushido;
@@ -89,7 +89,7 @@ fn set_up_windows(mut commands: Commands) {
     let dummy_camera = Camera2dBundle {
         transform: Transform {
             // rotation: Quat::from_axis_angle(Vec3::Z, PI),
-            translation: (10000.,10000.,0.).into(),
+            translation: (10000., 10000., 0.).into(),
             ..default()
         },
         camera: Camera {
@@ -146,9 +146,10 @@ fn window_updates(
             // primary_window.resolution.set(400., 300.);
             global.configured = true;
         } else if !global.resized {
-            primary_window
-                .resolution
-                .set(global.monitor_resolution.x - 2.0, global.monitor_resolution.y);
+            primary_window.resolution.set(
+                global.monitor_resolution.x - 2.0,
+                global.monitor_resolution.y,
+            );
             fake_window.resolution.set(
                 global.monitor_resolution.x / 2.0,
                 global.monitor_resolution.y / 2.0,
@@ -161,8 +162,11 @@ fn window_updates(
 
     for event in moved_events.read() {
         fake_window.position = WindowPosition::At(
-            ((global.monitor_resolution.x/4.0 - global.decoration_offset.x) as i32,
-            (global.monitor_resolution.y/4.0 - global.decoration_offset.y) as i32).into()
+            (
+                (global.monitor_resolution.x / 4.0 - global.decoration_offset.x) as i32,
+                (global.monitor_resolution.y / 4.0 - global.decoration_offset.y) as i32,
+            )
+                .into(),
         );
         primary_window.position = WindowPosition::Centered(MonitorSelection::Primary);
     }
@@ -177,22 +181,27 @@ fn window_updates(
 
     let (camera, camera_transform, camera_projection) = cameras.single();
     let window = primary_window_q.single();
-    if let Some(position) = window.cursor_position()
+    if let Some(position) = window
+        .cursor_position()
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
-        .map(|ray| ray.origin.truncate()) {
-            global.cursor_position = position;
-        }
+        .map(|ray| ray.origin.truncate())
+    {
+        global.cursor_position = position;
+    }
     let window = fake_window_q.single();
-    if let Some(position) = window.cursor_position()
+    if let Some(position) = window
+        .cursor_position()
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
-        .map(|ray| ray.origin.truncate()) {
-            global.cursor_position = (
-                position.x + global.monitor_resolution.x / (4.0 / global.camera_scale),
-                position.y - global.monitor_resolution.y / (4.0 / global.camera_scale)
-            ).into();
-            global.close_timer.reset();
-            global.close_enabled = false;
-        }
+        .map(|ray| ray.origin.truncate())
+    {
+        global.cursor_position = (
+            position.x + global.monitor_resolution.x / (4.0 / global.camera_scale),
+            position.y - global.monitor_resolution.y / (4.0 / global.camera_scale),
+        )
+            .into();
+        global.close_timer.reset();
+        global.close_enabled = false;
+    }
 
     global.close_timer.tick(time.delta());
     if global.close_timer.finished() {
@@ -204,14 +213,26 @@ fn window_updates(
 struct Testball;
 
 fn testball_setup(
-        mut commands: Commands,
-        asset_server: Res<AssetServer>,
-        mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
-    ) {
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut texture_atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
+) {
     let top_texture: Handle<Image> = asset_server.load("embedded://PlayerTop.png");
-    let top_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(Vec2::splat(20.0), 5, 1, None, None));
+    let top_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
+        Vec2::splat(20.0),
+        5,
+        1,
+        None,
+        None,
+    ));
     let bottom_texture: Handle<Image> = asset_server.load("embedded://PlayerBottom.png");
-    let bottom_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(Vec2::splat(20.0), 5, 1, None, None));
+    let bottom_layout = texture_atlas_layouts.add(TextureAtlasLayout::from_grid(
+        Vec2::splat(20.0),
+        5,
+        1,
+        None,
+        None,
+    ));
 
     commands.spawn((
         Testball,
@@ -227,13 +248,14 @@ fn testball_setup(
                 ..Default::default()
             },
             texture: top_texture.clone(),
-            transform: Transform::from_scale(Vec3::splat(2.0)).with_translation(Vec3::new(0.0, 0.0, 2.0)),
+            transform: Transform::from_scale(Vec3::splat(2.0))
+                .with_translation(Vec3::new(0.0, 0.0, 2.0)),
             ..default()
         },
         TextureAtlas {
             layout: top_layout.clone(),
             index: 0,
-        }
+        },
     ));
     commands.spawn((
         Testball,
@@ -245,13 +267,14 @@ fn testball_setup(
         },
         SpriteBundle {
             texture: bottom_texture.clone(),
-            transform: Transform::from_scale(Vec3::splat(2.0)).with_translation(Vec3::new(0.0, 0.0, 1.0)),
+            transform: Transform::from_scale(Vec3::splat(2.0))
+                .with_translation(Vec3::new(0.0, 0.0, 1.0)),
             ..default()
         },
         TextureAtlas {
             layout: bottom_layout.clone(),
             index: 0,
-        }
+        },
     ));
     commands.spawn((
         Testball,
@@ -267,13 +290,14 @@ fn testball_setup(
                 ..Default::default()
             },
             texture: top_texture,
-            transform: Transform::from_scale(Vec3::splat(2.0)).with_translation(Vec3::new(60.0, 0.0, 2.0)),
+            transform: Transform::from_scale(Vec3::splat(2.0))
+                .with_translation(Vec3::new(60.0, 0.0, 2.0)),
             ..default()
         },
         TextureAtlas {
             layout: top_layout,
             index: 0,
-        }
+        },
     ));
     commands.spawn((
         Testball,
@@ -285,30 +309,25 @@ fn testball_setup(
         },
         SpriteBundle {
             texture: bottom_texture,
-            transform: Transform::from_scale(Vec3::splat(2.0)).with_translation(Vec3::new(60.0, 0.0, 1.0)),
+            transform: Transform::from_scale(Vec3::splat(2.0))
+                .with_translation(Vec3::new(60.0, 0.0, 1.0)),
             ..default()
         },
         TextureAtlas {
             layout: bottom_layout,
             index: 0,
-        }
+        },
     ));
 }
 
 fn testball_update(
     time: Res<Time>,
     mut balls: Query<(&mut TextureAtlas, &mut Transform, &mut AnimationController), With<Testball>>,
-    global: Res<GameGlobal>
+    global: Res<GameGlobal>,
 ) {
     for (mut sprite, transform, animate) in balls.iter_mut() {
-        sprite.index = ((
-                time.elapsed_seconds_wrapped() * animate.speed
-                 + animate.offset
-            ) % (
-                animate.last as f32
-                - animate.first as f32
-                + 1.0
-            )) as usize
+        sprite.index = ((time.elapsed_seconds_wrapped() * animate.speed + animate.offset)
+            % (animate.last as f32 - animate.first as f32 + 1.0)) as usize
             + animate.first;
     }
 }
@@ -322,10 +341,7 @@ bitflags! {
     }
 }
 
-fn decoration_offset(
-    windows: NonSend<WinitWindows>,
-    mut global: ResMut<GameGlobal>
-) {
+fn decoration_offset(windows: NonSend<WinitWindows>, mut global: ResMut<GameGlobal>) {
     for window in windows.windows.values() {
         if window.is_decorated() {
             let outer = window.outer_position().unwrap();
@@ -336,10 +352,7 @@ fn decoration_offset(
     }
 }
 
-fn close_button(
-    global: Res<GameGlobal>,
-    windows: NonSend<WinitWindows>,
-) {
+fn close_button(global: Res<GameGlobal>, windows: NonSend<WinitWindows>) {
     for window in windows.windows.values() {
         if window.is_decorated() {
             if global.close_enabled {
@@ -386,7 +399,7 @@ fn main() {
         .add_plugins(EmbeddedAssetPlugin::default())
         // .add_plugins(InputManagerPlugin::<Action>::default())
         .add_systems(Startup, (set_up_windows,))
-        .add_systems(Update, (window_updates, decoration_offset, close_button,))
+        .add_systems(Update, (window_updates, decoration_offset, close_button))
         .add_plugins(BushidoPlugin)
         .run();
 }
