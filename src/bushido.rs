@@ -1,16 +1,20 @@
 // #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+use rand::Rng;
+mod enemy;
+mod menu;
 mod player;
 
+use crate::bushido::enemy::EnemyPlugin;
+use crate::bushido::menu::MenuPlugin;
+use crate::bushido::player::PlayerAction;
 use crate::bushido::player::PlayerPlugin;
 use crate::{set_up_windows, GameGlobal};
-
 use bevy::math::bounding::BoundingCircle;
 use bevy::prelude::*;
 use bevy::sprite::MaterialMesh2dBundle;
-
+use bevy::utils::Duration;
 use bevy::winit::WinitWindows;
 use bevy::{input::gamepad::GamepadEvent, input::keyboard::KeyboardInput};
-
 use leafwing_input_manager::prelude::*;
 
 pub struct BushidoPlugin;
@@ -18,14 +22,35 @@ pub struct BushidoPlugin;
 impl Plugin for BushidoPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(PlayerPlugin)
+            .add_plugins(MenuPlugin)
+            .add_plugins(EnemyPlugin)
             .init_state::<ActiveInput>()
+            .init_state::<GameState>()
             .add_systems(
                 Update,
-                activate_gamepad.run_if(in_state(ActiveInput::MouseKeyboard)),
+                (
+                    activate_gamepad.run_if(in_state(ActiveInput::MouseKeyboard)),
+                    fadeout_update,
+                ),
             )
             .add_systems(Update, activate_mkb.run_if(in_state(ActiveInput::Gamepad)))
-            .add_systems(Startup, background_setup.after(set_up_windows))
-            .add_systems(Update, (animate_sprites, walls, play_sounds))
+            .add_systems(
+                Startup,
+                (
+                    background_setup.after(set_up_windows),
+                    fadeout_setup.after(set_up_windows),
+                ),
+            )
+            .add_systems(
+                Update,
+                (
+                    animate_sprites,
+                    walls,
+                    play_sounds,
+                    update_colliders.run_if(in_state(GameState::Play)),
+                    advance_menu.run_if(in_state(GameState::Menu)),
+                ),
+            )
             .add_event::<Sound>();
     }
 }
@@ -35,6 +60,24 @@ enum ActiveInput {
     #[default]
     MouseKeyboard,
     Gamepad,
+}
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+pub enum GameState {
+    #[default]
+    Menu,
+    Fadeout,
+    Play,
+    GameOver,
+}
+
+fn advance_menu(
+    mut next_state: ResMut<NextState<GameState>>,
+    action_state: Res<ActionState<PlayerAction>>,
+) {
+    if action_state.just_pressed(&PlayerAction::Slash) {
+        next_state.set(GameState::Fadeout);
+    }
 }
 
 pub struct InputModeManagerPlugin;
@@ -120,6 +163,85 @@ fn background_setup(
     ));
 }
 
+#[derive(Component)]
+struct FadeoutWall;
+
+fn fadeout_setup(
+    mut commands: Commands,
+    global: Res<GameGlobal>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    commands.spawn((
+        FadeoutWall,
+        MaterialMesh2dBundle {
+            mesh: meshes
+                .add(Rectangle::new(global.inner_world_size.x, global.inner_world_size.y).mesh())
+                .into(),
+            transform: Transform::from_xyz(0.0, 0.0, 250.0),
+            material: materials.add(Color::rgba(0.0, 0.0, 0.0, 0.0)),
+            ..default()
+        },
+    ));
+}
+
+fn fadeout_update(
+    time: Res<Time>,
+    mut global: ResMut<GameGlobal>,
+    material: Query<&mut Handle<ColorMaterial>, With<FadeoutWall>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    state: Res<State<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    let material_handle = material.single();
+    let material = materials.get_mut(material_handle).unwrap();
+
+    match state.get() {
+        GameState::Fadeout => {
+            if global.fadeout < 1.0 {
+                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                global.fadeout += f32::min(time.delta_seconds(), 1.0 - global.fadeout);
+            } else {
+                material.color = Color::rgba(0.0, 0.0, 0.0, 1.0);
+                next_state.set(GameState::Play);
+            }
+        }
+        GameState::Play => {
+            if global.fadeout > 0.0 {
+                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                global.fadeout -= f32::min(time.delta_seconds() * 2.0, global.fadeout);
+            } else {
+                material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+            }
+        }
+        GameState::GameOver => {
+            if global.fadeout < 1.0 {
+                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                global.fadeout += f32::min(time.delta_seconds() * 0.1666, 1.0 - global.fadeout);
+            } else {
+                material.color = Color::rgba(0.0, 0.0, 0.0, 1.0);
+                next_state.set(GameState::Menu);
+            }
+        }
+        GameState::Menu => {
+            if global.fadeout > 0.0 {
+                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                global.fadeout -= f32::min(time.delta_seconds() * 2.0, global.fadeout);
+            } else {
+                material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+            }
+        }
+    }
+}
+
+// fn blood_setup(
+//     mut commands: Commands,
+//     global: Res<GameGlobal>,
+//     mut meshes: ResMut<Assets<Mesh>>,
+//     mut materials: ResMut<Assets<ColorMaterial>>,
+// ) {
+// }
+
 #[derive(Bundle)]
 struct SpriteAnimator {
     sprite: SpriteBundle,
@@ -136,6 +258,7 @@ struct Physical {
     quantize: f32,
     collider: BoundingCircle,
     wall_padding: f32,
+    hit_cooldown: Timer,
 }
 
 impl Default for Physical {
@@ -148,6 +271,7 @@ impl Default for Physical {
             quantize: 0.10,
             collider: BoundingCircle::new(Vec2::ZERO, 15.0),
             wall_padding: 6.0,
+            hit_cooldown: Timer::new(Duration::from_secs_f32(1.0), TimerMode::Once),
         }
     }
 }
@@ -173,6 +297,12 @@ impl Physical {
             self.velocity *= 1.0 + (self.max_speed - speed) * (1.0 - f32::powf(0.95, time));
         }
         self.velocity *= f32::powf(1.0 / (1.0 + self.deceleration), time);
+    }
+}
+
+fn update_colliders(mut query: Query<(&mut Physical, &Transform)>) {
+    for (mut physical, transform) in query.iter_mut() {
+        physical.collider.center = transform.translation.truncate();
     }
 }
 
@@ -217,23 +347,30 @@ fn walls(global: Res<GameGlobal>, mut things: Query<(&mut Transform, &mut Physic
             physical.velocity.y = 0.0;
         }
 
+        let x_bound;
+        let y_bound;
+
+        if global.expanded {
+            x_bound = global.monitor_resolution.x / 2.0;
+            y_bound = global.monitor_resolution.y / 2.0;
+        } else {
+            x_bound = global.inner_world_size.x / 2.0;
+            y_bound = global.inner_world_size.y / 2.0;
+        }
+
         //outer walls
         if f32::abs(transform.translation.x)
-            > global.monitor_resolution.x / 2.0
-                - (physical.collider.radius() + physical.wall_padding)
+            > x_bound - (physical.collider.radius() + physical.wall_padding)
         {
             transform.translation.x = f32::signum(transform.translation.x)
-                * (global.monitor_resolution.x / 2.0
-                    - (physical.collider.radius() + physical.wall_padding));
+                * (x_bound - (physical.collider.radius() + physical.wall_padding));
             physical.velocity.x = 0.0;
         }
         if f32::abs(transform.translation.y)
-            > global.monitor_resolution.y / 2.0
-                - (physical.collider.radius() + physical.wall_padding)
+            > y_bound - (physical.collider.radius() + physical.wall_padding)
         {
             transform.translation.y = f32::signum(transform.translation.y)
-                * (global.monitor_resolution.y / 2.0
-                    - (physical.collider.radius() + physical.wall_padding));
+                * (y_bound - (physical.collider.radius() + physical.wall_padding));
             physical.velocity.y = 0.0;
         }
     }
@@ -243,9 +380,11 @@ fn walls(global: Res<GameGlobal>, mut things: Query<(&mut Transform, &mut Physic
 struct Sound {
     name: String,
     position: Vec3,
+    speed: f32,
 }
 
 fn play_sounds(
+    mut global: ResMut<GameGlobal>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut new_sounds: EventReader<Sound>,
@@ -259,7 +398,9 @@ fn play_sounds(
             },
             AudioBundle {
                 source: sound_handle.clone(),
-                settings: PlaybackSettings::DESPAWN.with_spatial(true),
+                settings: PlaybackSettings::DESPAWN
+                    .with_spatial(true)
+                    .with_speed(sound.speed - 0.1 + global.rand.gen::<f32>() * 0.2),
             },
         ));
     }

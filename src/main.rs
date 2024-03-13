@@ -1,8 +1,12 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_variables))]
-#![windows_subsystem = "windows"]
+#![cfg_attr(
+    all(target_os = "windows", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 use bevy::app::AppExit;
 use bevy::audio::AudioPlugin;
 use bevy::audio::SpatialScale;
+use bevy::core_pipeline::bloom::BloomSettings;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::camera::RenderTarget;
@@ -19,6 +23,9 @@ use bevy::winit::WinitWindows;
 use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bitflags::bitflags;
 use bushido::BushidoPlugin;
+use bushido::GameState;
+use rand::SeedableRng;
+use rand_pcg::Pcg32;
 use winit::window::Icon;
 
 const AUDIO_SCALE: f32 = 1.0 / 600.0;
@@ -34,10 +41,14 @@ struct GameGlobal {
     configured: bool,
     resized: bool,
     ready: bool,
+    expand: bool,
+    expanded: bool,
     close_timer: Timer,
     close_enabled: bool,
     cursor_position: Vec2,
     gamepad: bool,
+    fadeout: f32,
+    rand: Pcg32,
 }
 
 #[derive(Component)]
@@ -66,10 +77,14 @@ fn set_up_windows(mut commands: Commands) {
         configured: false,
         resized: false,
         ready: false,
+        expand: false,
+        expanded: false,
         close_timer: Timer::new(Duration::from_secs(3), TimerMode::Once),
         close_enabled: true,
         cursor_position: (0., 0.).into(),
         gamepad: false,
+        fadeout: 0.0,
+        rand: Pcg32::from_entropy(),
     });
 
     let fake_window = Window {
@@ -93,8 +108,15 @@ fn set_up_windows(mut commands: Commands) {
 
     let fake_window_id = commands.spawn((fake_window, FakeWindow)).id();
 
-    let camera = Camera2dBundle::default();
-    commands.spawn((camera, MainCamera));
+    let camera = Camera2dBundle {
+        camera: Camera {
+            hdr: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(0.0, 0.0, -500.0),
+        ..default()
+    };
+    commands.spawn((camera, MainCamera, BloomSettings::NATURAL));
 
     let dummy_camera = Camera2dBundle {
         transform: Transform {
@@ -159,14 +181,29 @@ fn window_updates(
                 global.monitor_resolution.y / (4.0 / 3.0),
             );
             primary_window.resolution.set(
-                // This tiny shave prevents a weird bug with trying to do borderless fullscreen instead
-                global.monitor_resolution.x - 0.01,
-                global.monitor_resolution.y,
+                // global.monitor_resolution.x + 2.0,
+                // global.monitor_resolution.y,
+                global.monitor_resolution.x / (4.0 / 3.0),
+                global.monitor_resolution.y / (4.0 / 3.0),
             );
             for mut camera in cameras.iter_mut() {
                 camera.2.scale = global.camera_scale;
             }
+            info!(
+                "Configuring for {}, {} and enabling primary window",
+                global.monitor_resolution.x / (4.0 / 3.0),
+                global.monitor_resolution.y / (4.0 / 3.0)
+            );
             primary_window.visible = true;
+            global.resized = true;
+        } else if global.expand & !global.expanded {
+            primary_window.resolution.set(
+                // slightly oversize to prevent a weird borderless fullscreen bug
+                global.monitor_resolution.x + 2.0,
+                global.monitor_resolution.y,
+            );
+            info!("Expanding primary window");
+            global.expanded = true;
         }
     }
 
@@ -204,11 +241,15 @@ fn window_updates(
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
         .map(|ray| ray.origin.truncate())
     {
-        global.cursor_position = (
-            position.x + global.monitor_resolution.x / (8.0 / global.camera_scale),
-            position.y - global.monitor_resolution.y / (8.0 / global.camera_scale),
-        )
-            .into();
+        if global.expanded {
+            global.cursor_position = (
+                position.x + global.monitor_resolution.x / (8.0 / global.camera_scale),
+                position.y - global.monitor_resolution.y / (8.0 / global.camera_scale),
+            )
+                .into();
+        } else {
+            global.cursor_position = (position.x, position.y).into();
+        }
         global.close_timer.reset();
         global.close_enabled = false;
     }
@@ -265,7 +306,8 @@ fn decoration_offset(windows: NonSend<WinitWindows>, mut global: ResMut<GameGlob
             if window.is_decorated() {
                 let outer = window.outer_position().unwrap();
                 let inner = window.inner_position().unwrap();
-                global.decoration_offset.x = (inner.x - outer.x) as f32;
+                // One extra pixel due to borderless fix
+                global.decoration_offset.x = (-1 + inner.x - outer.x) as f32;
                 global.decoration_offset.y = (inner.y - outer.y) as f32;
                 if global.decoration_offset.x > 0.0 {
                     window
@@ -287,6 +329,12 @@ fn close_button(global: Res<GameGlobal>, windows: NonSend<WinitWindows>) {
             }
         }
     }
+}
+
+fn reset_window(mut global: ResMut<GameGlobal>) {
+    global.resized = false;
+    global.expand = false;
+    global.expanded = false;
 }
 
 fn main() {
@@ -329,6 +377,7 @@ fn main() {
         .add_plugins(EmbeddedAssetPlugin::default())
         .add_systems(Startup, (set_up_windows,))
         .add_systems(Update, (window_updates, decoration_offset, close_button))
+        .add_systems(OnExit(GameState::Play), reset_window)
         // .add_systems(Startup, testball_setup)
         // .add_systems(Update, testball_update)
         .add_plugins(BushidoPlugin)

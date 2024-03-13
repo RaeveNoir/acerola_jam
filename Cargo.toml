@@ -10,6 +10,8 @@ bevy_embedded_assets = "0.10.0"
 bevy_hanabi = "0.10.0"
 bitflags = "2.4.2"
 leafwing-input-manager = "0.13.3"
+rand = "0.8.5"
+rand_pcg = "0.3.1"
 winit = "0.29.14"
 
 [dev-dependencies]
@@ -25,6 +27,13 @@ opt-level = 1
 # Enable high optimizations for dependencies (incl. Bevy), but not for our code:
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
 
 [package.metadata.bundle]
 name = "Bushido Blazer"

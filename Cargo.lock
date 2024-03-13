@@ -83,6 +83,8 @@ dependencies = [
  "bitflags 2.4.2",
  "embed-resource",
  "leafwing-input-manager",
+ "rand",
+ "rand_pcg",
  "winit",
 ]
 

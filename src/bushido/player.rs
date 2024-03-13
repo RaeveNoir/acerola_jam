@@ -1,14 +1,20 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
+use crate::bushido::menu::Hitcount;
+use crate::bushido::menu::Ichi;
+use crate::bushido::menu::Ni;
+use crate::bushido::menu::San;
+use crate::bushido::menu::Shi;
 use crate::bushido::ActionState;
 use crate::bushido::Animate;
+use crate::bushido::GameState;
 use crate::bushido::InputModeManagerPlugin;
 use crate::bushido::Physical;
 use crate::bushido::Sound;
 use crate::bushido::SpriteAnimator;
 use crate::GameGlobal;
 use bevy::prelude::*;
+use bevy::utils::Duration;
 use leafwing_input_manager::prelude::*;
-use std::time::Duration;
 
 const SLASH_COOLDOWN: f32 = 2.5;
 const FINISH_TIME: f32 = 1.0;
@@ -22,8 +28,18 @@ impl Plugin for PlayerPlugin {
             .add_plugins(InputModeManagerPlugin)
             .init_resource::<ActionState<PlayerAction>>()
             .insert_resource(PlayerAction::default_input_map())
-            .add_systems(Startup, create_player)
-            .add_systems(Update, (update_player, player_sprite_states));
+            .init_state::<PlayerHits>()
+            .add_systems(OnEnter(GameState::Play), create_player)
+            .add_systems(
+                Update,
+                (update_player, player_hit, player_sprite_states).run_if(in_state(GameState::Play)),
+            )
+            .add_systems(
+                Update,
+                player_sprite_states.run_if(in_state(GameState::GameOver)),
+            )
+            .add_systems(OnExit(GameState::GameOver), destroy_player)
+            .add_event::<Hit>();
     }
 }
 
@@ -103,12 +119,12 @@ pub enum PlayerMoving {
     Right,
 }
 
-fn create_player(
+pub fn create_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let top_texture: Handle<Image> = asset_server.load("embedded://PlayerTop.png");
+    let top_texture = asset_server.load("embedded://PlayerTopHalved.png");
     let top_layout = layouts.add(TextureAtlasLayout::from_grid(
         Vec2::splat(20.0),
         5,
@@ -116,7 +132,7 @@ fn create_player(
         None,
         None,
     ));
-    let bottom_texture: Handle<Image> = asset_server.load("embedded://PlayerBottom.png");
+    let bottom_texture = asset_server.load("embedded://PlayerBottom.png");
     let bottom_layout = layouts.add(TextureAtlasLayout::from_grid(
         Vec2::splat(20.0),
         5,
@@ -128,7 +144,10 @@ fn create_player(
     commands
         .spawn(PlayerBundle {
             player: Player,
-            spatial: SpatialBundle::default(),
+            spatial: SpatialBundle {
+                transform: Transform::from_xyz(60.0, 0.0, 0.0),
+                ..default()
+            },
             top_state: PlayerTopState::Idle,
             bottom_state: PlayerBottomState::Run,
             facing: PlayerFacing::Left,
@@ -142,6 +161,10 @@ fn create_player(
                 PlayerTopSprite,
                 SpriteAnimator {
                     sprite: SpriteBundle {
+                        sprite: Sprite {
+                            color: Color::rgb(2.0, 2.0, 2.0),
+                            ..default()
+                        },
                         texture: top_texture,
                         transform: Transform::from_scale(Vec3::splat(2.0))
                             .with_translation(Vec3::new(0.0, 0.0, 2.0)),
@@ -187,6 +210,16 @@ fn create_player(
         });
 }
 
+fn destroy_player(
+    mut commands: Commands,
+    player: Query<Entity, With<Player>>,
+    mut next_hit: ResMut<NextState<PlayerHits>>,
+) {
+    let player = player.single();
+    commands.entity(player).despawn_recursive();
+    next_hit.set(PlayerHits::Zero)
+}
+
 fn update_player(
     time: Res<Time>,
     global: ResMut<GameGlobal>,
@@ -207,7 +240,7 @@ fn update_player(
 ) {
     let (
         mut transform,
-        top_state,
+        mut top_state,
         mut bottom_state,
         mut facing,
         mut moving,
@@ -218,13 +251,26 @@ fn update_player(
 
     cooldowns.slash.tick(time.delta());
     cooldowns.finish.tick(time.delta());
+    physical.hit_cooldown.tick(time.delta());
+
+    if cooldowns.slash.just_finished() {
+        top_state.set_if_neq(PlayerTopState::Finish);
+        cooldowns.finish.reset();
+        info!("Slash finished");
+    }
+
+    if cooldowns.finish.just_finished() {
+        top_state.set_if_neq(PlayerTopState::Idle);
+    }
 
     if action_state.just_pressed(&PlayerAction::Slash) {
-        if cooldowns.slash.finished() {
+        if cooldowns.slash.finished() & cooldowns.finish.finished() {
             play_sounds.send(Sound {
                 name: "slash".to_string(),
                 position: transform.translation,
+                speed: 1.0,
             });
+            top_state.set_if_neq(PlayerTopState::Slash);
             cooldowns.slash.reset();
 
             let direction;
@@ -242,13 +288,17 @@ fn update_player(
                     (global.cursor_position - transform.translation.truncate()).normalize_or_zero();
             }
 
+            let slash_start = transform.translation;
             transform.translation += (direction * SLASH_DISTANCE).extend(0.0);
+            let slash_end = transform.translation;
+
             let boost = direction * physical.max_speed * SLASH_BOOST;
             physical.impulse(boost);
         } else {
             play_sounds.send(Sound {
                 name: "unready".to_string(),
                 position: transform.translation,
+                speed: 1.0,
             });
         }
     }
@@ -313,6 +363,9 @@ fn player_sprite_states(
         Query<(&mut Animate, &mut Sprite), With<PlayerBottomSprite>>,
     )>,
 ) {
+    if top_state.is_empty() | bottom_state.is_empty() {
+        return;
+    }
     let (top_state, top_state_ref) = top_state.single();
     let (bottom_state, bottom_state_ref) = bottom_state.single();
     let facing = facing.single();
@@ -337,19 +390,19 @@ fn player_sprite_states(
                     anim.first = 2;
                     anim.last = 2;
                     anim.speed = 0.0;
-                    anim.offset = 0.0
+                    anim.offset = 0.0;
                 }
                 PlayerTopState::Finish => {
                     anim.first = 3;
                     anim.last = 3;
                     anim.speed = 0.0;
-                    anim.offset = 0.0
+                    anim.offset = 0.0;
                 }
                 PlayerTopState::Dead => {
                     anim.first = 4;
                     anim.last = 4;
                     anim.speed = 0.0;
-                    anim.offset = 0.0
+                    anim.offset = 0.0;
                 }
             }
         } else if *top_state == PlayerTopState::Idle {
@@ -378,6 +431,7 @@ fn player_sprite_states(
                     anim.current = anim.first + anim.offset as usize
                 }
             } else {
+                anim.current = anim.first + anim.offset as usize;
                 anim.timer.reset();
                 anim.timer.pause();
             }
@@ -398,7 +452,7 @@ fn player_sprite_states(
                     anim.first = 0;
                     anim.last = 0;
                     anim.speed = 0.0;
-                    anim.offset = 0.0
+                    anim.offset = 0.0;
                 }
                 PlayerBottomState::Run => {
                     anim.first = 1;
@@ -411,6 +465,13 @@ fn player_sprite_states(
             if *bottom_state == PlayerBottomState::Run {
                 anim.speed = 3.0 + 6.0 * velocity;
             }
+        }
+
+        if *top_state == PlayerTopState::Dead {
+            anim.first = 0;
+            anim.last = 0;
+            anim.speed = 0.0;
+            anim.offset = 0.0;
         }
 
         if anim.timer.finished() || bottom_state_ref.is_changed() {
@@ -429,9 +490,9 @@ fn player_sprite_states(
                     anim.speed = 9.0;
                 }
             } else {
+                anim.current = anim.first + anim.offset as usize;
                 anim.timer.reset();
                 anim.timer.pause();
-                anim.current = anim.first;
             }
         }
 
@@ -443,7 +504,7 @@ fn player_sprite_states(
 }
 
 #[derive(Actionlike, PartialEq, Eq, Hash, Clone, Copy, Debug, Reflect)]
-enum PlayerAction {
+pub enum PlayerAction {
     Run,
     StickAim,
     Slash,
@@ -462,5 +523,87 @@ impl PlayerAction {
         input_map.insert(PlayerAction::Slash, GamepadButtonType::RightThumb);
         input_map.insert(PlayerAction::Slash, MouseButton::Left);
         input_map
+    }
+}
+
+#[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PlayerHits {
+    #[default]
+    Zero,
+    Ichi,
+    Ni,
+    San,
+    Shi,
+}
+
+#[derive(Event)]
+pub struct Hit;
+
+fn player_hit(
+    mut hit: EventReader<Hit>,
+    mut hitcounts: Query<(
+        Option<&Ichi>,
+        Option<&Ni>,
+        Option<&San>,
+        Option<&Shi>,
+        &mut Hitcount,
+    )>,
+    current_hit: Res<State<PlayerHits>>,
+    mut next_hit: ResMut<NextState<PlayerHits>>,
+    mut game_state: ResMut<NextState<GameState>>,
+    mut play_sounds: EventWriter<Sound>,
+    player_pos: Query<&Transform, With<Player>>,
+    mut top_query: Query<&mut PlayerTopState>,
+    mut bottom_query: Query<&mut PlayerBottomState>,
+) {
+    for event in hit.read() {
+        info!("Hit");
+        for (ichi, ni, san, shi, mut hitcount) in hitcounts.iter_mut() {
+            if *current_hit.get() == PlayerHits::Zero && ichi.is_some() {
+                next_hit.set(PlayerHits::Ichi);
+                play_sounds.send(Sound {
+                    name: "hurt".to_string(),
+                    position: player_pos.single().translation,
+                    speed: 1.0,
+                });
+                hitcount.timer.reset();
+                break;
+            }
+            if *current_hit.get() == PlayerHits::Ichi && ni.is_some() {
+                next_hit.set(PlayerHits::Ni);
+                play_sounds.send(Sound {
+                    name: "hurt".to_string(),
+                    position: player_pos.single().translation,
+                    speed: 0.8,
+                });
+                hitcount.timer.reset();
+                break;
+            }
+            if *current_hit.get() == PlayerHits::Ni && san.is_some() {
+                next_hit.set(PlayerHits::San);
+                play_sounds.send(Sound {
+                    name: "hurt".to_string(),
+                    position: player_pos.single().translation,
+                    speed: 0.6,
+                });
+                hitcount.timer.reset();
+                break;
+            }
+            if *current_hit.get() == PlayerHits::San && shi.is_some() {
+                next_hit.set(PlayerHits::Shi);
+                game_state.set(GameState::GameOver);
+                play_sounds.send(Sound {
+                    name: "dead".to_string(),
+                    position: player_pos.single().translation,
+                    speed: 1.0,
+                });
+                let mut top = top_query.single_mut();
+                let mut bottom = bottom_query.single_mut();
+                top.set_if_neq(PlayerTopState::Dead);
+                bottom.set_if_neq(PlayerBottomState::Idle);
+                hitcount.timer.reset();
+                break;
+            }
+        }
     }
 }
