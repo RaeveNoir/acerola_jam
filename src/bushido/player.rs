@@ -80,7 +80,7 @@ impl Default for PlayerCooldowns {
             .slash
             .set_elapsed(Duration::from_secs_f32(SLASH_COOLDOWN));
         cooldowns
-            .slash
+            .pause
             .set_elapsed(Duration::from_secs_f32(SLASH_PAUSE));
         cooldowns
             .finish
@@ -160,7 +160,7 @@ pub fn create_player(
         .spawn(PlayerBundle {
             player: Player,
             spatial: SpatialBundle {
-                transform: Transform::from_xyz(60.0, 0.0, 0.0),
+                transform: Transform::from_xyz(-30.0, 0.0, 0.0),
                 ..default()
             },
             top_state: PlayerTopState::Idle,

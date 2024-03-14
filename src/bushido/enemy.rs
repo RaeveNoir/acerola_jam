@@ -17,6 +17,7 @@ use bevy::math::bounding::BoundingCircle;
 use bevy::math::bounding::IntersectsVolume;
 use bevy::math::bounding::RayCast2d;
 use bevy::prelude::*;
+use bevy::time::Stopwatch;
 use bevy::utils::Duration;
 use rand::Rng;
 use std::f32::consts::PI;
@@ -24,77 +25,212 @@ use std::f32::consts::PI;
 pub struct EnemyPlugin;
 impl Plugin for EnemyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Startup,
-            (setup_wall_lines, setup_dark_presence).after(set_up_windows),
-        )
-        .add_systems(
-            Update,
-            (
-                update_enemy,
-                spawn_enemies,
-                enemy_collisions,
-                player_collisions,
-                hit_by_slash.before(player_collisions),
-                finish_him,
-                enemy_sprite_states,
-                update_dark_presence,
+        app.insert_resource(SpawnWaves::default())
+            .add_systems(
+                Startup,
+                (setup_wall_lines, setup_dark_presence).after(set_up_windows),
             )
-                .run_if(in_state(GameState::Play)),
-        )
-        .add_event::<SpawnEnemy>()
-        .add_systems(OnEnter(GameState::Play), spawn_one_dummy)
-        .add_systems(OnExit(GameState::GameOver), destroy_enemies)
-        .add_systems(OnEnter(GameState::DarkPresenceAttack), dark_presence_attack)
-        .add_systems(
-            Update,
-            dark_presence_attack_timer.run_if(in_state(GameState::DarkPresenceAttack)),
-        )
-        .add_systems(
-            OnExit(GameState::DarkPresenceAttack),
-            (destroy_enemies, dark_presence_remove),
-        );
+            .add_systems(
+                Update,
+                (
+                    update_enemy,
+                    spawn_waves,
+                    spawn_enemies,
+                    enemy_collisions,
+                    player_collisions,
+                    hit_by_slash.before(player_collisions),
+                    finish_him,
+                    enemy_sprite_states,
+                    update_dark_presence,
+                )
+                    .run_if(in_state(GameState::Play)),
+            )
+            .add_event::<SpawnEnemy>()
+            // .add_systems(OnEnter(GameState::Play), spawn_one_dummy)
+            .add_systems(OnExit(GameState::Play), spawn_waves_reset)
+            .add_systems(OnExit(GameState::GameOver), destroy_enemies)
+            .add_systems(OnEnter(GameState::DarkPresenceAttack), dark_presence_attack)
+            .add_systems(
+                Update,
+                dark_presence_attack_timer.run_if(in_state(GameState::DarkPresenceAttack)),
+            )
+            .add_systems(
+                OnExit(GameState::DarkPresenceAttack),
+                (destroy_enemies, dark_presence_remove),
+            );
     }
 }
 
 #[derive(Resource)]
 struct SpawnWaves {
     current: i32,
+    skip: bool,
+    timer: Stopwatch,
+    waves: Vec<Vec<EnemyType>>,
 }
 
-fn spawn_one_dummy(mut global: ResMut<GameGlobal>, mut new_enemy: EventWriter<SpawnEnemy>) {
-    global.expand = true;
+impl Default for SpawnWaves {
+    fn default() -> SpawnWaves {
+        SpawnWaves {
+            current: -1,
+            skip: false,
+            timer: Stopwatch::new(),
+            waves: vec![
+                vec![EnemyType::Dummy],
+                vec![EnemyType::Dummy; 2],
+                vec![EnemyType::GrayMask],
+                vec![EnemyType::GrayMask; 3],
+                vec![EnemyType::BlueMask],
+                vec![EnemyType::BlueMask; 3],
+                vec![
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                ],
+                vec![EnemyType::GrayMask, EnemyType::GrayMask, EnemyType::RedMask],
+                vec![
+                    EnemyType::GrayMask,
+                    EnemyType::GrayMask,
+                    EnemyType::RedMask,
+                    EnemyType::GrayMask,
+                    EnemyType::GrayMask,
+                    EnemyType::RedMask,
+                ],
+                vec![
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                    EnemyType::RedMask,
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                    EnemyType::RedMask,
+                    EnemyType::GrayMask,
+                    EnemyType::BlueMask,
+                    EnemyType::RedMask,
+                ],
+                vec![EnemyType::BlackMask],
+                vec![
+                    EnemyType::BlackMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlackMask,
+                ],
+                vec![
+                    EnemyType::RedMask,
+                    EnemyType::BlackMask,
+                    EnemyType::RedMask,
+                    EnemyType::BlackMask,
+                    EnemyType::RedMask,
+                    EnemyType::BlackMask,
+                    EnemyType::RedMask,
+                    EnemyType::BlackMask,
+                    EnemyType::RedMask,
+                ],
+                vec![
+                    EnemyType::BlueMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlueMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlueMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlueMask,
+                    EnemyType::BlackMask,
+                    EnemyType::BlueMask,
+                ],
+            ],
+        }
+    }
+}
+
+fn spawn_waves_reset(mut spawn_waves: ResMut<SpawnWaves>) {
+    spawn_waves.current = -1;
+    spawn_waves.skip = false;
+}
+
+fn spawn_waves(
+    mut global: ResMut<GameGlobal>,
+    mut spawn_waves: ResMut<SpawnWaves>,
+    mut new_enemy: EventWriter<SpawnEnemy>,
+    enemies: Query<&Enemy>,
+    player: Query<&Transform, With<Player>>,
+) {
+    if enemies.is_empty() {
+        if !spawn_waves.skip {
+            spawn_waves.current += 1;
+            let mut wave = Vec::new();
+            if spawn_waves.current < spawn_waves.waves.len() as i32 - 1 {
+                for pick in &spawn_waves.waves[spawn_waves.current as usize] {
+                    wave.push(*pick);
+                }
+            } else {
+                for n in 0..spawn_waves.current {
+                    let rand = global.rand.gen::<f32>();
+                    let pick;
+                    if rand < 0.1 {
+                        pick = EnemyType::BlackMask;
+                    } else if rand < 0.3 {
+                        pick = EnemyType::RedMask;
+                    } else if rand < 0.5 {
+                        pick = EnemyType::BlueMask;
+                    } else {
+                        pick = EnemyType::GrayMask;
+                    }
+                    wave.push(pick);
+                }
+            }
+
+            spawn_waves.skip = true;
+            let distance = f32::min(spawn_waves.current as f32 * 20.0 + 45.0, 200.0);
+
+            let angle;
+
+            if spawn_waves.current > 3 {
+                angle = global.rand.gen::<f32>() * PI * 2.0;
+            } else {
+                angle = 0.0;
+            }
+
+            let position;
+
+            if spawn_waves.current < 6 || player.is_empty() {
+                position = Vec2::splat(0.0);
+            } else {
+                let transform = player.single();
+                position = transform.translation.truncate();
+                global.expand = true;
+            }
+
+            let delta_angle = 2.0 * PI / wave.len() as f32;
+            let mut current_enemy = 0;
+
+            let direction = Vec2::new(
+                position.x + distance * (0.8 + global.rand.gen::<f32>() * 0.4),
+                position.y + 0.0,
+            );
+
+            let direction = direction.rotate(Vec2::from_angle(angle));
+
+            for enemy_type in &wave {
+                new_enemy.send(SpawnEnemy {
+                    enemy_type: wave[current_enemy],
+                    position: direction
+                        .rotate(Vec2::from_angle(delta_angle * current_enemy as f32))
+                        * Vec2::new(1.7, 1.0),
+                });
+                current_enemy += 1;
+            }
+        } else {
+            spawn_waves.skip = false;
+        }
+    }
+}
+
+fn spawn_one_dummy(mut new_enemy: EventWriter<SpawnEnemy>) {
     new_enemy.send(SpawnEnemy {
         enemy_type: EnemyType::Dummy,
         position: (-60.0, 0.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::GrayMask,
-        position: (-300.0, 200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::RedMask,
-        position: (-305.0, 200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::BlackMask,
-        position: (-310.0, 200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::GrayMask,
-        position: (-315.0, 200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::BlueMask,
-        position: (320.0, -200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::BlackMask,
-        position: (325.0, -200.0).into(),
-    });
-    new_enemy.send(SpawnEnemy {
-        enemy_type: EnemyType::RedMask,
-        position: (325.0, -200.0).into(),
     });
 }
 
@@ -109,6 +245,7 @@ struct Enemy;
 #[derive(Component)]
 struct EnemySprite;
 
+#[derive(Clone, Copy)]
 enum EnemyType {
     Dummy,
     GrayMask,
@@ -207,7 +344,7 @@ fn spawn_enemies(
                             deceleration: 1.25,
                             top_speed: 0.35,
                             quantize: 0.0,
-                            collider: BoundingCircle::new(Vec2::ZERO, 10.0),
+                            collider: BoundingCircle::new(Vec2::ZERO, 15.0),
                             wall_padding: 5.0,
                             ..default()
                         },
@@ -418,6 +555,7 @@ fn spawn_enemies(
 
 fn update_enemy(
     time: Res<Time>,
+    global: Res<GameGlobal>,
     mut enemies: Query<
         (
             &mut Transform,
@@ -437,37 +575,45 @@ fn update_enemy(
     }
     let player = player_query.single();
     let delta = time.delta_seconds();
+
+    let player_inbounds = f32::abs(player.translation.x) < global.inner_world_size.x / 2.0
+        && f32::abs(player.translation.y) < global.inner_world_size.y / 2.0;
+
     for (mut transform, mut physical, dummy, gray_mask, blue_mask, red_mask, black_mask) in
         enemies.iter_mut()
     {
+        let enemy_inbounds = f32::abs(transform.translation.x) < global.inner_world_size.x / 2.0
+            && f32::abs(transform.translation.y) < global.inner_world_size.y / 2.0;
         physical.hit_cooldown.tick(time.delta());
         let player_vector = Vec2::from_slice(&[
             player.translation.x - transform.translation.x,
             player.translation.y - transform.translation.y,
         ]);
         let mut direction = player_vector.normalize_or_zero();
-        if gray_mask.is_some() {
-            physical.accelerate(delta * direction);
-        }
-        if blue_mask.is_some() {
-            direction = Vec2::from_angle(0.25).rotate(direction);
-            physical.accelerate(delta * direction);
-        }
-        if red_mask.is_some() {
-            if player_vector.length() < SLASH_DISTANCE
-                && player_vector.length() > SLASH_DISTANCE * 0.8
-            {
-                physical.impulse(Vec2::from_angle(3.25 * PI / 2.0).rotate(direction) * 8.0 * delta);
+        if player_inbounds == enemy_inbounds {
+            if gray_mask.is_some() {
+                physical.accelerate(delta * direction);
             }
-            physical.accelerate(delta * direction);
-        }
-        if black_mask.is_some() {
-            if f32::abs(Vec2::from(physical.velocity).angle_between(player_vector)) < 0.4 {
-                physical.impulse(direction * 4.0 * delta);
+            if blue_mask.is_some() {
+                direction = Vec2::from_angle(0.25).rotate(direction);
+                physical.accelerate(delta * direction);
             }
-            physical.accelerate(delta * direction);
+            if red_mask.is_some() {
+                if player_vector.length() < SLASH_DISTANCE
+                    && player_vector.length() > SLASH_DISTANCE * 0.8
+                {
+                    physical
+                        .impulse(Vec2::from_angle(3.25 * PI / 2.0).rotate(direction) * 8.0 * delta);
+                }
+                physical.accelerate(delta * direction);
+            }
+            if black_mask.is_some() {
+                if f32::abs(Vec2::from(physical.velocity).angle_between(player_vector)) < 0.4 {
+                    physical.impulse(direction * 4.0 * delta);
+                }
+                physical.accelerate(delta * direction);
+            }
         }
-
         physical.lerp(delta);
         transform.translation += physical.velocity.extend(0.0);
     }
@@ -514,6 +660,13 @@ fn enemy_collisions(time: Res<Time>, mut enemies: Query<(&mut Physical, &Transfo
             let normal = direction.truncate().normalize();
             enemy1_physical.impulse(normal * delta * 5.0);
             enemy2_physical.impulse(-normal * delta * 5.0);
+        } else {
+            let direction = enemy1_transform.translation - enemy2_transform.translation;
+            let normal = direction.truncate().normalize();
+            if direction.length() < 100.0 {
+                enemy1_physical.impulse(normal * delta * 0.25);
+                enemy2_physical.impulse(-normal * delta * 0.25);
+            }
         }
     }
 }
@@ -610,7 +763,7 @@ fn hit_by_slash(
                 + Vec2::from_angle(PI / 2.0)
                     .rotate(*line.direction)
                     .normalize_or_zero()
-                    * 15.0,
+                    * 7.0,
             line.direction,
             line.length,
         );
@@ -619,7 +772,7 @@ fn hit_by_slash(
                 + Vec2::from_angle(3.0 * PI / 2.0)
                     .rotate(*line.direction)
                     .normalize_or_zero()
-                    * 15.0,
+                    * 7.0,
             line.direction,
             line.length,
         );
@@ -628,13 +781,14 @@ fn hit_by_slash(
             15.0,
         );
         for (mut physical, entity) in colliders.iter_mut() {
-            if slash_one
+            if (slash_one
                 .circle_intersection_at(&physical.collider)
                 .is_some()
                 || slash_two
                     .circle_intersection_at(&physical.collider)
                     .is_some()
-                || slash_end.intersects(&physical.collider) && physical.hit_cooldown.finished()
+                || slash_end.intersects(&physical.collider))
+                && physical.hit_cooldown.finished()
             {
                 sound.send(Sound {
                     name: "hit".to_string(),
@@ -768,7 +922,7 @@ fn update_dark_presence(
             game_state.set(GameState::DarkPresenceAttack);
         } else {
             sprite.color.set_a(
-                f32::max(presence.timer.fraction() * 0.01 - 0.003, 0.0)
+                f32::max(presence.timer.fraction() * 0.01 - 0.006, 0.0)
                     + f32::max(
                         global.rand.gen::<f32>() * presence.timer.fraction() * 0.002 - 0.0005,
                         0.0,
@@ -777,6 +931,7 @@ fn update_dark_presence(
         }
     } else {
         presence.timer.reset();
+        sprite.color.set_a(0.0);
     }
 }
 
