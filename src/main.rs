@@ -49,6 +49,7 @@ struct GameGlobal {
     gamepad: bool,
     fadeout: f32,
     rand: Pcg32,
+    kills: usize,
 }
 
 #[derive(Component)]
@@ -85,6 +86,7 @@ fn set_up_windows(mut commands: Commands) {
         gamepad: false,
         fadeout: 0.0,
         rand: Pcg32::from_entropy(),
+        kills: 0,
     });
 
     let fake_window = Window {
@@ -347,6 +349,7 @@ fn reset_window(mut global: ResMut<GameGlobal>) {
     global.resized = false;
     global.expand = false;
     global.expanded = false;
+    global.kills = 0;
 }
 
 fn main() {

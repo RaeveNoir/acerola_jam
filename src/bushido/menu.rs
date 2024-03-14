@@ -1,6 +1,7 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 use crate::bushido::player::PlayerHit;
 use crate::bushido::GameState;
+use crate::GameGlobal;
 use bevy::prelude::*;
 use bevy::utils::Duration;
 use bevy_hanabi::position;
@@ -8,10 +9,10 @@ use bevy_hanabi::position;
 pub struct MenuPlugin;
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, (setup_menu, setup_hitcounts))
+        app.add_systems(Startup, (setup_menu, setup_hitcounts, setup_scoreboard))
+            .add_systems(Update, (update_scoreboard, fade_hitcounts))
             .add_systems(OnEnter(GameState::Menu), show_menu)
-            .add_systems(OnEnter(GameState::Play), hide_menu)
-            .add_systems(Update, fade_hitcounts);
+            .add_systems(OnEnter(GameState::Play), hide_menu);
     }
 }
 
@@ -169,5 +170,45 @@ fn hide_menu(mut menu_q: Query<(&Menu, &mut Visibility)>) {
     for (menu, mut visibility) in menu_q.iter_mut() {
         *visibility = Visibility::Hidden;
         info!("Hiding menu");
+    }
+}
+
+#[derive(Component)]
+struct Scoreboard;
+
+fn setup_scoreboard(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        Scoreboard,
+        Text2dBundle {
+            text: Text::from_section(
+                "Kills: 0",
+                TextStyle {
+                    font: asset_server.load("embedded://saruji.ttf"),
+                    font_size: 35.0,
+                    color: Color::rgb(2.5, 0.25, 0.25),
+                    ..default()
+                },
+            )
+            .with_justify(JustifyText::Center),
+            visibility: Visibility::Hidden,
+            transform: Transform::from_xyz(0.0, -500.0, 10.0),
+            ..default()
+        },
+    ));
+}
+
+fn update_scoreboard(
+    mut query: Query<(&Scoreboard, &mut Text, &mut Visibility)>,
+    state: Res<State<GameState>>,
+    global: Res<GameGlobal>,
+) {
+    if !query.is_empty() {
+        let (score, mut text, mut vis) = query.single_mut();
+        if *state.get() == GameState::Play || *state.get() == GameState::GameOver {
+            *vis = Visibility::Visible;
+            text.sections[0].value = format!("Kills: {}", global.kills);
+        } else {
+            *vis = Visibility::Hidden;
+        }
     }
 }

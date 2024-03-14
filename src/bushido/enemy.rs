@@ -213,11 +213,12 @@ fn spawn_waves(
             let direction = direction.rotate(Vec2::from_angle(angle));
 
             for enemy_type in &wave {
+                let mut pos =
+                    direction.rotate(Vec2::from_angle(delta_angle * current_enemy as f32));
+                pos.x *= 1.35;
                 new_enemy.send(SpawnEnemy {
                     enemy_type: wave[current_enemy],
-                    position: direction
-                        .rotate(Vec2::from_angle(delta_angle * current_enemy as f32))
-                        * Vec2::new(1.7, 1.0),
+                    position: pos,
                 });
                 current_enemy += 1;
             }
@@ -822,6 +823,7 @@ fn hit_by_slash(
 }
 
 fn finish_him(
+    mut global: ResMut<GameGlobal>,
     mut commands: Commands,
     mut finish_events: EventReader<Finish>,
     mut sound: EventWriter<Sound>,
@@ -835,6 +837,7 @@ fn finish_him(
                 speed: 1.0,
             });
             commands.entity(entity).despawn_recursive();
+            global.kills += 1;
         }
         return;
     }
