@@ -39,3 +39,7 @@ strip = true
 name = "Bushido Blazer"
 icon = ["assets/icon.png"]
 description = "For Acerola Jam 0!"
+
+[[bin]]
+name = "BushidoBlazer"
+path = "src/main.rs"

@@ -1,5 +1,5 @@
 #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
-use crate::bushido::player::Hit;
+use crate::bushido::player::PlayerHit;
 use crate::bushido::GameState;
 use bevy::prelude::*;
 use bevy::utils::Duration;
@@ -26,13 +26,13 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 "Bushido Blazer",
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
-                    font_size: 275.0,
+                    font_size: 225.0,
                     color: Color::rgb(2.5, 0.25, 0.25),
                     ..default()
                 },
             )
             .with_justify(JustifyText::Center),
-            transform: Transform::from_xyz(0.0, 240.0, 10.0),
+            transform: Transform::from_xyz(0.0, 140.0, 10.0),
             ..default()
         },
     ));
@@ -73,6 +73,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
             )
             .with_justify(JustifyText::Center),
             transform: Transform::from_xyz(0.0, 0.0, 10.0),
+            visibility: Visibility::Hidden,
             ..default()
         },
     ));
@@ -93,6 +94,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
             )
             .with_justify(JustifyText::Center),
             transform: Transform::from_xyz(0.0, 0.0, 10.0),
+            visibility: Visibility::Hidden,
             ..default()
         },
     ));
@@ -113,6 +115,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
             )
             .with_justify(JustifyText::Center),
             transform: Transform::from_xyz(0.0, 0.0, 10.0),
+            visibility: Visibility::Hidden,
             ..default()
         },
     ));
@@ -133,14 +136,21 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
             )
             .with_justify(JustifyText::Center),
             transform: Transform::from_xyz(0.0, 0.0, 10.0),
+            visibility: Visibility::Hidden,
             ..default()
         },
     ));
 }
 
-fn fade_hitcounts(time: Res<Time>, mut hitcounts: Query<(&mut Hitcount, &mut Text)>) {
-    for (mut hitcount, mut text) in hitcounts.iter_mut() {
+fn fade_hitcounts(
+    time: Res<Time>,
+    mut hitcounts: Query<(&mut Hitcount, &mut Text, &mut Visibility)>,
+) {
+    for (mut hitcount, mut text, mut visible) in hitcounts.iter_mut() {
         hitcount.timer.tick(time.delta());
+        if hitcount.timer.finished() {
+            *visible = Visibility::Visible;
+        }
         text.sections[0].style.color.set_a(
             0.5 * (1.0
                 - hitcount.timer.elapsed().as_secs_f32() / hitcount.timer.duration().as_secs_f32()),

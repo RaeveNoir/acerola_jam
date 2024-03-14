@@ -144,13 +144,18 @@ fn window_updates(
     mut global: ResMut<GameGlobal>,
     asset_server: Res<AssetServer>,
     mut exit: EventWriter<AppExit>,
+    state: Res<State<GameState>>,
 ) {
-    let mut primary_window = primary_window_q.single_mut();
-    let mut fake_window = fake_window_q.single_mut();
     for closed in closed_events.read() {
         info!("A window closed, exiting.");
         exit.send(AppExit);
     }
+
+    if primary_window_q.is_empty() || fake_window_q.is_empty() {
+        return;
+    }
+    let mut primary_window = primary_window_q.single_mut();
+    let mut fake_window = fake_window_q.single_mut();
 
     for event in focused_events.read() {
         if event.focused == true {
@@ -161,50 +166,56 @@ fn window_updates(
             primary_window.window_level = WindowLevel::Normal;
             fake_window.window_level = WindowLevel::Normal;
         }
-        if !global.configured {
-            let width = primary_window.resolution.width();
-            let height = primary_window.resolution.height();
-            let scale = f32::min(
-                width / global.monitor_resolution.x,
-                height / global.monitor_resolution.y,
-            );
-            global.monitor_resolution.x = scale * global.monitor_resolution.x;
-            global.monitor_resolution.y = scale * global.monitor_resolution.y;
-            global.camera_scale = 1.0 / scale;
-            info!("Configuring for width: {} Scale: {}", width, scale);
-            primary_window.mode = WindowMode::Windowed;
-            // primary_window.resolution.set(400., 300.);
-            global.configured = true;
-        } else if !global.resized {
-            fake_window.resolution.set(
-                global.monitor_resolution.x / (4.0 / 3.0),
-                global.monitor_resolution.y / (4.0 / 3.0),
-            );
-            primary_window.resolution.set(
-                // global.monitor_resolution.x + 2.0,
-                // global.monitor_resolution.y,
-                global.monitor_resolution.x / (4.0 / 3.0),
-                global.monitor_resolution.y / (4.0 / 3.0),
-            );
-            for mut camera in cameras.iter_mut() {
-                camera.2.scale = global.camera_scale;
-            }
-            info!(
-                "Configuring for {}, {} and enabling primary window",
-                global.monitor_resolution.x / (4.0 / 3.0),
-                global.monitor_resolution.y / (4.0 / 3.0)
-            );
-            primary_window.visible = true;
-            global.resized = true;
-        } else if global.expand & !global.expanded {
-            primary_window.resolution.set(
-                // slightly oversize to prevent a weird borderless fullscreen bug
-                global.monitor_resolution.x + 2.0,
-                global.monitor_resolution.y,
-            );
-            info!("Expanding primary window");
-            global.expanded = true;
+    }
+    if !global.configured {
+        let width = primary_window.resolution.width();
+        let height = primary_window.resolution.height();
+        let scale = f32::min(
+            width / global.monitor_resolution.x,
+            height / global.monitor_resolution.y,
+        );
+        global.monitor_resolution.x = scale * global.monitor_resolution.x;
+        global.monitor_resolution.y = scale * global.monitor_resolution.y;
+        global.camera_scale = 1.0 / scale;
+        info!("Configuring for width: {} Scale: {}", width, scale);
+        primary_window.mode = WindowMode::Windowed;
+        global.configured = true;
+    } else if !global.resized {
+        fake_window.resolution.set(
+            global.monitor_resolution.x / (4.0 / 3.0),
+            global.monitor_resolution.y / (4.0 / 3.0),
+        );
+        primary_window.resolution.set(
+            global.monitor_resolution.x / (4.0 / 3.0),
+            global.monitor_resolution.y / (4.0 / 3.0),
+        );
+
+        primary_window.position = WindowPosition::At(
+            (
+                (global.monitor_resolution.x / 8.0) as i32,
+                (global.monitor_resolution.y / 8.0) as i32,
+            )
+                .into(),
+        );
+        for mut camera in cameras.iter_mut() {
+            camera.2.scale = global.camera_scale;
         }
+        info!(
+            "Configuring for {}, {} and enabling primary window",
+            global.monitor_resolution.x / (4.0 / 3.0),
+            global.monitor_resolution.y / (4.0 / 3.0)
+        );
+        primary_window.visible = true;
+        global.resized = true;
+    } else if global.expand & !global.expanded {
+        primary_window.resolution.set(
+            // slightly oversize to prevent a weird borderless fullscreen bug
+            global.monitor_resolution.x + 2.0,
+            global.monitor_resolution.y,
+        );
+        info!("Expanding primary window");
+        global.expanded = true;
+        primary_window.position = WindowPosition::At((-1, 0).into());
     }
 
     for event in moved_events.read() {
@@ -215,7 +226,6 @@ fn window_updates(
             )
                 .into(),
         );
-        primary_window.position = WindowPosition::Centered(MonitorSelection::Primary);
     }
 
     // for event in entered_events.read() {
@@ -241,17 +251,19 @@ fn window_updates(
         .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
         .map(|ray| ray.origin.truncate())
     {
-        if global.expanded {
-            global.cursor_position = (
-                position.x + global.monitor_resolution.x / (8.0 / global.camera_scale),
-                position.y - global.monitor_resolution.y / (8.0 / global.camera_scale),
-            )
-                .into();
-        } else {
-            global.cursor_position = (position.x, position.y).into();
+        if *state == GameState::Play || *state == GameState::GameOver {
+            if global.expanded {
+                global.cursor_position = (
+                    position.x + global.monitor_resolution.x / (8.0 / global.camera_scale),
+                    position.y - global.monitor_resolution.y / (8.0 / global.camera_scale),
+                )
+                    .into();
+            } else {
+                global.cursor_position = (position.x, position.y).into();
+            }
+            global.close_timer.reset();
+            global.close_enabled = false;
         }
-        global.close_timer.reset();
-        global.close_enabled = false;
     }
 
     global.close_timer.tick(time.delta());
@@ -377,7 +389,7 @@ fn main() {
         .add_plugins(EmbeddedAssetPlugin::default())
         .add_systems(Startup, (set_up_windows,))
         .add_systems(Update, (window_updates, decoration_offset, close_button))
-        .add_systems(OnExit(GameState::Play), reset_window)
+        .add_systems(OnEnter(GameState::Menu), reset_window)
         // .add_systems(Startup, testball_setup)
         // .add_systems(Update, testball_update)
         .add_plugins(BushidoPlugin)

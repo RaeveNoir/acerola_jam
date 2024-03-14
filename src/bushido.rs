@@ -69,6 +69,7 @@ pub enum GameState {
     Fadeout,
     Play,
     GameOver,
+    DarkPresenceAttack,
 }
 
 fn advance_menu(
@@ -231,6 +232,9 @@ fn fadeout_update(
                 material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
             }
         }
+        GameState::DarkPresenceAttack => {
+            material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+        }
     }
 }
 
@@ -254,7 +258,7 @@ struct Physical {
     velocity: Vec2,
     acceleration: f32,
     deceleration: f32,
-    max_speed: f32,
+    top_speed: f32,
     quantize: f32,
     collider: BoundingCircle,
     wall_padding: f32,
@@ -267,7 +271,7 @@ impl Default for Physical {
             velocity: Vec2::splat(0.0),
             acceleration: 20.0,
             deceleration: 20.0,
-            max_speed: 2.5,
+            top_speed: 2.5,
             quantize: 0.10,
             collider: BoundingCircle::new(Vec2::ZERO, 15.0),
             wall_padding: 6.0,
@@ -287,14 +291,17 @@ impl Physical {
 
     fn lerp(&mut self, time: f32) {
         let speed = self.velocity.length();
-        if speed < self.max_speed {
-            if speed > self.max_speed - self.max_speed * self.quantize {
-                self.velocity *= 1.0 + (self.max_speed - speed) * (1.0 - f32::powf(0.4, time));
-            } else if speed < self.quantize * self.max_speed {
+        if speed > self.top_speed * 4.0 {
+            self.velocity *= self.top_speed / speed;
+        }
+        if speed < self.top_speed {
+            if speed > self.top_speed - self.top_speed * self.quantize {
+                self.velocity *= 1.0 + (self.top_speed - speed) * (1.0 - f32::powf(0.4, time));
+            } else if speed < self.quantize * self.top_speed {
                 self.velocity *= f32::powf(0.1, time);
             }
         } else {
-            self.velocity *= 1.0 + (self.max_speed - speed) * (1.0 - f32::powf(0.95, time));
+            self.velocity *= 1.0 + (self.top_speed - speed) * (1.0 - f32::powf(0.95, time));
         }
         self.velocity *= f32::powf(1.0 / (1.0 + self.deceleration), time);
     }

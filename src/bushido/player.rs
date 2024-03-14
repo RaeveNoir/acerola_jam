@@ -16,10 +16,11 @@ use bevy::prelude::*;
 use bevy::utils::Duration;
 use leafwing_input_manager::prelude::*;
 
-const SLASH_COOLDOWN: f32 = 2.5;
-const FINISH_TIME: f32 = 1.0;
-const SLASH_DISTANCE: f32 = 120.0;
-const SLASH_BOOST: f32 = 4.0;
+pub const SLASH_COOLDOWN: f32 = 2.5;
+pub const SLASH_PAUSE: f32 = 0.66;
+pub const FINISH_TIME: f32 = 1.0;
+pub const SLASH_DISTANCE: f32 = 140.0;
+pub const SLASH_BOOST: f32 = 4.0;
 
 pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
@@ -29,17 +30,26 @@ impl Plugin for PlayerPlugin {
             .init_resource::<ActionState<PlayerAction>>()
             .insert_resource(PlayerAction::default_input_map())
             .init_state::<PlayerHits>()
-            .add_systems(OnEnter(GameState::Play), create_player)
+            .add_systems(OnEnter(GameState::Play), (create_player, noise))
+            .add_systems(OnExit(GameState::Play), remove_noise)
             .add_systems(
                 Update,
-                (update_player, player_hit, player_sprite_states).run_if(in_state(GameState::Play)),
+                (
+                    update_player,
+                    player_hit.after(update_player),
+                    player_sprite_states,
+                )
+                    .run_if(in_state(GameState::Play)),
             )
             .add_systems(
                 Update,
                 player_sprite_states.run_if(in_state(GameState::GameOver)),
             )
             .add_systems(OnExit(GameState::GameOver), destroy_player)
-            .add_event::<Hit>();
+            .add_systems(OnExit(GameState::DarkPresenceAttack), destroy_player)
+            .add_event::<PlayerHit>()
+            .add_event::<Slash>()
+            .add_event::<Finish>();
     }
 }
 
@@ -54,19 +64,24 @@ impl Default for Player {
 
 #[derive(Component)]
 pub struct PlayerCooldowns {
-    slash: Timer,
-    finish: Timer,
+    pub slash: Timer,
+    pub pause: Timer,
+    pub finish: Timer,
 }
 
 impl Default for PlayerCooldowns {
     fn default() -> PlayerCooldowns {
         let mut cooldowns = PlayerCooldowns {
             slash: Timer::new(Duration::from_secs_f32(SLASH_COOLDOWN), TimerMode::Once),
+            pause: Timer::new(Duration::from_secs_f32(SLASH_PAUSE), TimerMode::Once),
             finish: Timer::new(Duration::from_secs_f32(FINISH_TIME), TimerMode::Once),
         };
         cooldowns
             .slash
             .set_elapsed(Duration::from_secs_f32(SLASH_COOLDOWN));
+        cooldowns
+            .slash
+            .set_elapsed(Duration::from_secs_f32(SLASH_PAUSE));
         cooldowns
             .finish
             .set_elapsed(Duration::from_secs_f32(FINISH_TIME));
@@ -124,7 +139,7 @@ pub fn create_player(
     asset_server: Res<AssetServer>,
     mut layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let top_texture = asset_server.load("embedded://PlayerTopHalved.png");
+    let top_texture = asset_server.load("embedded://PlayerTopQuartered.png");
     let top_layout = layouts.add(TextureAtlasLayout::from_grid(
         Vec2::splat(20.0),
         5,
@@ -162,7 +177,7 @@ pub fn create_player(
                 SpriteAnimator {
                     sprite: SpriteBundle {
                         sprite: Sprite {
-                            color: Color::rgb(2.0, 2.0, 2.0),
+                            color: Color::rgb(4.0, 4.0, 4.0),
                             ..default()
                         },
                         texture: top_texture,
@@ -225,6 +240,8 @@ fn update_player(
     global: ResMut<GameGlobal>,
     action_state: Res<ActionState<PlayerAction>>,
     mut play_sounds: EventWriter<Sound>,
+    mut slash_event: EventWriter<Slash>,
+    mut finish_event: EventWriter<Finish>,
     mut player: Query<
         (
             &mut Transform,
@@ -237,6 +254,7 @@ fn update_player(
         ),
         With<Player>,
     >,
+    noise_stuff: Query<&AudioSink, With<Noise>>,
 ) {
     let (
         mut transform,
@@ -250,17 +268,36 @@ fn update_player(
     let delta = time.delta_seconds();
 
     cooldowns.slash.tick(time.delta());
+    cooldowns.pause.tick(time.delta());
     cooldowns.finish.tick(time.delta());
     physical.hit_cooldown.tick(time.delta());
 
     if cooldowns.slash.just_finished() {
-        top_state.set_if_neq(PlayerTopState::Finish);
+        if !cooldowns.slash.finished() {
+            top_state.set_if_neq(PlayerTopState::Finish);
+        } else {
+            top_state.set_if_neq(PlayerTopState::Idle);
+        }
+    }
+
+    if !cooldowns.pause.finished() {
+        top_state.set_if_neq(PlayerTopState::Slash);
+        bottom_state.set_if_neq(PlayerBottomState::Idle);
+    }
+
+    if cooldowns.pause.just_finished() {
         cooldowns.finish.reset();
-        info!("Slash finished");
+        top_state.set_if_neq(PlayerTopState::Finish);
     }
 
     if cooldowns.finish.just_finished() {
         top_state.set_if_neq(PlayerTopState::Idle);
+        play_sounds.send(Sound {
+            name: "finish".to_string(),
+            position: transform.translation,
+            speed: 1.0,
+        });
+        finish_event.send(Finish);
     }
 
     if action_state.just_pressed(&PlayerAction::Slash) {
@@ -288,11 +325,24 @@ fn update_player(
                     (global.cursor_position - transform.translation.truncate()).normalize_or_zero();
             }
 
+            if !cooldowns.pause.finished() {
+                cooldowns
+                    .pause
+                    .set_elapsed(Duration::from_secs_f32(SLASH_PAUSE));
+            }
+
             let slash_start = transform.translation;
             transform.translation += (direction * SLASH_DISTANCE).extend(0.0);
             let slash_end = transform.translation;
 
-            let boost = direction * physical.max_speed * SLASH_BOOST;
+            slash_event.send(Slash {
+                start: slash_start.truncate(),
+                direction: Direction2d::from_xy(direction.x, direction.y)
+                    .unwrap_or(Direction2d::from_xy(1.0, 0.0).unwrap()),
+                length: SLASH_DISTANCE,
+            });
+
+            let boost = direction * physical.top_speed * SLASH_BOOST;
             physical.impulse(boost);
         } else {
             play_sounds.send(Sound {
@@ -315,7 +365,9 @@ fn update_player(
         physical.accelerate(delta_move);
     }
 
-    transform.translation += physical.velocity.extend(0.0);
+    if cooldowns.pause.finished() {
+        transform.translation += physical.velocity.extend(0.0);
+    }
 
     if action_state.pressed(&PlayerAction::StickAim) {
         if action_state
@@ -343,11 +395,44 @@ fn update_player(
     }
 
     if action_state.pressed(&PlayerAction::Run)
-        || physical.velocity.length() > physical.max_speed / 4.0
+        || physical.velocity.length() > physical.top_speed / 4.0
     {
         bottom_state.set_if_neq(PlayerBottomState::Run);
     } else {
         bottom_state.set_if_neq(PlayerBottomState::Idle);
+    }
+
+    if let Ok(sink) = noise_stuff.get_single() {
+        if f32::abs(transform.translation.x) > global.inner_world_size.x / 2.0
+            || f32::abs(transform.translation.y) > global.inner_world_size.y / 2.0
+        {
+            sink.play()
+        } else {
+            sink.pause()
+        }
+    }
+}
+
+#[derive(Component)]
+struct Noise;
+
+fn noise(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn((
+        Noise,
+        SpatialBundle {
+            transform: Transform::from_xyz(0.0, 0.0, 0.0),
+            ..default()
+        },
+        AudioBundle {
+            source: asset_server.load("embedded://noise.mp3"),
+            settings: PlaybackSettings::LOOP.with_spatial(false).paused(),
+        },
+    ));
+}
+
+fn remove_noise(mut commands: Commands, noise: Query<Entity, With<Noise>>) {
+    if !noise.is_empty() {
+        commands.entity(noise.single()).despawn_recursive();
     }
 }
 
@@ -526,6 +611,16 @@ impl PlayerAction {
     }
 }
 
+#[derive(Event)]
+pub struct Slash {
+    pub start: Vec2,
+    pub direction: Direction2d,
+    pub length: f32,
+}
+
+#[derive(Event)]
+pub struct Finish;
+
 #[derive(States, Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PlayerHits {
     #[default]
@@ -537,10 +632,10 @@ pub enum PlayerHits {
 }
 
 #[derive(Event)]
-pub struct Hit;
+pub struct PlayerHit;
 
 fn player_hit(
-    mut hit: EventReader<Hit>,
+    mut hit: EventReader<PlayerHit>,
     mut hitcounts: Query<(
         Option<&Ichi>,
         Option<&Ni>,
@@ -557,7 +652,6 @@ fn player_hit(
     mut bottom_query: Query<&mut PlayerBottomState>,
 ) {
     for event in hit.read() {
-        info!("Hit");
         for (ichi, ni, san, shi, mut hitcount) in hitcounts.iter_mut() {
             if *current_hit.get() == PlayerHits::Zero && ichi.is_some() {
                 next_hit.set(PlayerHits::Ichi);
