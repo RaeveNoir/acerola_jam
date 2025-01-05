@@ -1,11 +1,12 @@
-// #![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
-use rand::Rng;
+#![cfg_attr(debug_assertions, allow(dead_code, unused_imports, unused_variables))]
 mod enemy;
 mod menu;
+mod particle;
 mod player;
 
 use crate::bushido::enemy::EnemyPlugin;
 use crate::bushido::menu::MenuPlugin;
+use crate::bushido::particle::ParticlePlugin;
 use crate::bushido::player::PlayerAction;
 use crate::bushido::player::PlayerPlugin;
 use crate::{set_up_windows, GameGlobal};
@@ -16,6 +17,7 @@ use bevy::utils::Duration;
 use bevy::winit::WinitWindows;
 use bevy::{input::gamepad::GamepadEvent, input::keyboard::KeyboardInput};
 use leafwing_input_manager::prelude::*;
+use rand::Rng;
 
 pub struct BushidoPlugin;
 
@@ -24,7 +26,8 @@ impl Plugin for BushidoPlugin {
         app.add_plugins(PlayerPlugin)
             .add_plugins(MenuPlugin)
             .add_plugins(EnemyPlugin)
-            .init_state::<ActiveInput>()
+            // .add_plugins(ParticlePlugin)
+            // .init_state::<ActiveInput>()
             .init_state::<GameState>()
             .add_systems(
                 Update,
@@ -180,7 +183,7 @@ fn fadeout_setup(
                 .add(Rectangle::new(global.inner_world_size.x, global.inner_world_size.y).mesh())
                 .into(),
             transform: Transform::from_xyz(0.0, 0.0, 250.0),
-            material: materials.add(Color::rgba(0.0, 0.0, 0.0, 0.0)),
+            material: materials.add(Color::srgba(0.0, 0.0, 0.0, 0.0)),
             ..default()
         },
     ));
@@ -200,40 +203,40 @@ fn fadeout_update(
     match state.get() {
         GameState::Fadeout => {
             if global.fadeout < 1.0 {
-                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                material.color = Color::srgba(0.0, 0.0, 0.0, global.fadeout);
                 global.fadeout += f32::min(time.delta_seconds(), 1.0 - global.fadeout);
             } else {
-                material.color = Color::rgba(0.0, 0.0, 0.0, 1.0);
+                material.color = Color::srgba(0.0, 0.0, 0.0, 1.0);
                 next_state.set(GameState::Play);
             }
         }
         GameState::Play => {
             if global.fadeout > 0.0 {
-                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                material.color = Color::srgba(0.0, 0.0, 0.0, global.fadeout);
                 global.fadeout -= f32::min(time.delta_seconds() * 2.0, global.fadeout);
             } else {
-                material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+                material.color = Color::srgba(0.0, 0.0, 0.0, 0.0);
             }
         }
         GameState::GameOver => {
             if global.fadeout < 1.0 {
-                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                material.color = Color::srgba(0.0, 0.0, 0.0, global.fadeout);
                 global.fadeout += f32::min(time.delta_seconds() * 0.1666, 1.0 - global.fadeout);
             } else {
-                material.color = Color::rgba(0.0, 0.0, 0.0, 1.0);
+                material.color = Color::srgba(0.0, 0.0, 0.0, 1.0);
                 next_state.set(GameState::Menu);
             }
         }
         GameState::Menu => {
             if global.fadeout > 0.0 {
-                material.color = Color::rgba(0.0, 0.0, 0.0, global.fadeout);
+                material.color = Color::srgba(0.0, 0.0, 0.0, global.fadeout);
                 global.fadeout -= f32::min(time.delta_seconds() * 2.0, global.fadeout);
             } else {
-                material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+                material.color = Color::srgba(0.0, 0.0, 0.0, 0.0);
             }
         }
         GameState::DarkPresenceAttack => {
-            material.color = Color::rgba(0.0, 0.0, 0.0, 0.0);
+            material.color = Color::srgba(0.0, 0.0, 0.0, 0.0);
         }
     }
 }
@@ -358,8 +361,8 @@ fn walls(global: Res<GameGlobal>, mut things: Query<(&mut Transform, &mut Physic
         let y_bound;
 
         if global.expanded {
-            x_bound = global.monitor_resolution.x / 2.0;
-            y_bound = global.monitor_resolution.y / 2.0;
+            x_bound = global.inner_world_size.x * 2.0 / 3.0;
+            y_bound = global.inner_world_size.y * 2.0 / 3.0;
         } else {
             x_bound = global.inner_world_size.x / 2.0;
             y_bound = global.inner_world_size.y / 2.0;

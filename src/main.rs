@@ -140,17 +140,19 @@ fn window_updates(
     mut closed_events: EventReader<WindowCloseRequested>,
     mut focused_events: EventReader<WindowFocused>,
     mut moved_events: EventReader<WindowMoved>,
+    primary_entity_q: Query<Entity, With<PrimaryWindow>>,
     mut primary_window_q: Query<&mut Window, With<PrimaryWindow>>,
     mut fake_window_q: Query<&mut Window, Without<PrimaryWindow>>,
     mut cameras: Query<(&Camera, &GlobalTransform, &mut OrthographicProjection), With<MainCamera>>,
     mut global: ResMut<GameGlobal>,
+    winit_windows: NonSend<WinitWindows>,
     asset_server: Res<AssetServer>,
     mut exit: EventWriter<AppExit>,
     state: Res<State<GameState>>,
 ) {
     for closed in closed_events.read() {
         info!("A window closed, exiting.");
-        exit.send(AppExit);
+        exit.send(AppExit::Success);
     }
 
     if primary_window_q.is_empty() || fake_window_q.is_empty() {
@@ -170,14 +172,25 @@ fn window_updates(
         }
     }
     if !global.configured {
-        let width = primary_window.resolution.width();
-        let height = primary_window.resolution.height();
-        let scale = f32::min(
-            width / global.monitor_resolution.x,
-            height / global.monitor_resolution.y,
+        let primary_window_entity = primary_entity_q.single();
+        let res = winit_windows
+            .get_window(primary_window_entity)
+            .expect("No window!?")
+            .primary_monitor()
+            .expect("Somehow no monitor!?")
+            .size();
+        global.monitor_resolution = Vec2::new(res.width as f32, res.height as f32);
+        info!("Monitor resolution: {} x {}", res.width, res.height);
+        primary_window.resolution.set(
+            global.monitor_resolution.x / (4.0 / 3.0),
+            global.monitor_resolution.y / (4.0 / 3.0),
         );
-        global.monitor_resolution.x = scale * global.monitor_resolution.x;
-        global.monitor_resolution.y = scale * global.monitor_resolution.y;
+        let width = 2560.0;
+        let height = 1440.0;
+        let scale = f32::min(
+            global.monitor_resolution.x / width,
+            global.monitor_resolution.y / height,
+        );
         global.camera_scale = 1.0 / scale;
         info!("Configuring for width: {} Scale: {}", width, scale);
         primary_window.mode = WindowMode::Windowed;
@@ -321,7 +334,7 @@ fn decoration_offset(windows: NonSend<WinitWindows>, mut global: ResMut<GameGlob
                 let outer = window.outer_position().unwrap();
                 let inner = window.inner_position().unwrap();
                 // One extra pixel due to borderless fix
-                global.decoration_offset.x = (-1 + inner.x - outer.x) as f32;
+                global.decoration_offset.x = (1 + inner.x - outer.x) as f32;
                 global.decoration_offset.y = (inner.y - outer.y) as f32;
                 if global.decoration_offset.x > 0.0 {
                     window
@@ -355,7 +368,7 @@ fn reset_window(mut global: ResMut<GameGlobal>) {
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::NONE))
-        // .insert_resource(ClearColor(Color::rgba(0.1, 0.1, 0.1, 0.1)))
+        // .insert_resource(ClearColor(Color::srgba(0.1, 0.1, 0.1, 0.1)))
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -390,9 +403,12 @@ fn main() {
                 }),
         )
         .add_plugins(EmbeddedAssetPlugin::default())
-        .add_systems(Startup, (set_up_windows,))
+        .add_systems(
+            Startup,
+            (set_up_windows, reset_window.after(set_up_windows)),
+        )
         .add_systems(Update, (window_updates, decoration_offset, close_button))
-        .add_systems(OnEnter(GameState::Menu), reset_window)
+        .add_systems(OnExit(GameState::GameOver), reset_window)
         // .add_systems(Startup, testball_setup)
         // .add_systems(Update, testball_update)
         .add_plugins(BushidoPlugin)

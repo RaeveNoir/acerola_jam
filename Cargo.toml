@@ -1,25 +1,35 @@
 [package]
 name = "acerola_jam"
+description = "For Acerola Jam 0!"
 version = "0.1.0"
 edition = "2021"
+authors = ["Raeve Noir <Ranzear@gmail.com>"]
+
+[package.metadata.bundle]
+name = "Bushido Blazer"
+icon = ["assets/icon.png"]
+identifier = "com.rubere.bushido"
+# short_description = "For Acerola Jam 0!"
+resources = []
+copyright = "Copyright (c) Raeve Noir 2024. All rights reserved."
 
 [dependencies]
-bevy = { version = "0.13.0", features = ["mp3"]  }
-bevy_cursor = "0.3.0"
-bevy_embedded_assets = "0.10.0"
-bevy_hanabi = "0.10.0"
-bitflags = "2.4.2"
+bevy = { version = "0.14.2", features = ["mp3"] }
+bevy_cursor = "0.4.0"
+bevy_embedded_assets = "0.11.0"
+bevy_hanabi = "0.12.2"
+bitflags = "2.6.0"
 codesign = "0.2.1"
-leafwing-input-manager = "0.13.3"
+leafwing-input-manager = "0.15.1"
 rand = "0.8.5"
 rand_pcg = "0.3.1"
-winit = "0.29.14"
+winit = "0.30.5"
 
 [dev-dependencies]
-bevy = { version = "0.13.0", features = ["mp3", "dynamic_linking"] }
+bevy = { version = "0.14.2", features = ["mp3", "dynamic_linking"] }
 
 [build-dependencies]
-embed-resource = "2.4.2"
+embed-resource = "2.5.0"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
@@ -35,11 +45,6 @@ lto = true
 codegen-units = 1
 panic = 'abort'
 strip = true
-
-[package.metadata.bundle]
-name = "Bushido Blazer"
-icon = ["assets/icon.png"]
-description = "For Acerola Jam 0!"
 
 [[bin]]
 name = "BushidoBlazer"

@@ -141,7 +141,7 @@ pub fn create_player(
 ) {
     let top_texture = asset_server.load("embedded://PlayerTopQuartered.png");
     let top_layout = layouts.add(TextureAtlasLayout::from_grid(
-        Vec2::splat(20.0),
+        UVec2::splat(20),
         5,
         1,
         None,
@@ -149,7 +149,7 @@ pub fn create_player(
     ));
     let bottom_texture = asset_server.load("embedded://PlayerBottom.png");
     let bottom_layout = layouts.add(TextureAtlasLayout::from_grid(
-        Vec2::splat(20.0),
+        UVec2::splat(20),
         5,
         1,
         None,
@@ -177,7 +177,7 @@ pub fn create_player(
                 SpriteAnimator {
                     sprite: SpriteBundle {
                         sprite: Sprite {
-                            color: Color::rgb(4.0, 4.0, 4.0),
+                            color: Color::srgb(4.0, 4.0, 4.0),
                             ..default()
                         },
                         texture: top_texture,
@@ -312,10 +312,9 @@ fn update_player(
 
             let direction;
 
-            if action_state.pressed(&PlayerAction::StickAim) {
+            if action_state.axis_pair(&PlayerAction::StickAim) != Vec2::ZERO {
                 direction = action_state
                     .clamped_axis_pair(&PlayerAction::StickAim)
-                    .unwrap()
                     .xy()
                     .normalize_or_zero();
             } else if global.gamepad {
@@ -337,8 +336,8 @@ fn update_player(
 
             slash_event.send(Slash {
                 start: slash_start.truncate(),
-                direction: Direction2d::from_xy(direction.x, direction.y)
-                    .unwrap_or(Direction2d::from_xy(1.0, 0.0).unwrap()),
+                direction: Dir2::from_xy(direction.x, direction.y)
+                    .unwrap_or(Dir2::from_xy(1.0, 0.0).unwrap()),
                 length: SLASH_DISTANCE,
             });
 
@@ -355,10 +354,9 @@ fn update_player(
 
     physical.lerp(delta);
 
-    if action_state.pressed(&PlayerAction::Run) {
+    if action_state.axis_pair(&PlayerAction::Run) != Vec2::ZERO {
         let move_vec = action_state
             .clamped_axis_pair(&PlayerAction::Run)
-            .unwrap()
             .xy()
             .clamp_length_max(1.0);
         let delta_move = delta * move_vec;
@@ -369,13 +367,8 @@ fn update_player(
         transform.translation += physical.velocity.extend(0.0);
     }
 
-    if action_state.pressed(&PlayerAction::StickAim) {
-        if action_state
-            .clamped_axis_pair(&PlayerAction::StickAim)
-            .unwrap()
-            .x()
-            > 0.0
-        {
+    if action_state.axis_pair(&PlayerAction::StickAim) != Vec2::ZERO {
+        if action_state.clamped_axis_pair(&PlayerAction::StickAim).x > 0.0 {
             *facing = PlayerFacing::Right;
         } else {
             *facing = PlayerFacing::Left;
@@ -394,7 +387,7 @@ fn update_player(
         *moving = PlayerMoving::Left;
     }
 
-    if action_state.pressed(&PlayerAction::Run)
+    if action_state.axis_pair(&PlayerAction::Run) != Vec2::ZERO
         || physical.velocity.length() > physical.top_speed / 4.0
     {
         bottom_state.set_if_neq(PlayerBottomState::Run);
@@ -588,19 +581,32 @@ fn player_sprite_states(
     }
 }
 
-#[derive(Actionlike, PartialEq, Eq, Hash, Clone, Copy, Debug, Reflect)]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, Reflect)]
 pub enum PlayerAction {
     Run,
     StickAim,
     Slash,
 }
 
+impl Actionlike for PlayerAction {
+    fn input_control_kind(&self) -> InputControlKind {
+        // We're using a match statement here
+        // because in larger projects, you will likely have
+        // different input control kinds for different actions
+        match self {
+            PlayerAction::Run => InputControlKind::DualAxis,
+            PlayerAction::StickAim => InputControlKind::DualAxis,
+            PlayerAction::Slash => InputControlKind::Button,
+        }
+    }
+}
+
 impl PlayerAction {
     fn default_input_map() -> InputMap<Self> {
         let mut input_map = InputMap::default();
-        input_map.insert(PlayerAction::Run, DualAxis::left_stick());
-        input_map.insert(PlayerAction::Run, VirtualDPad::wasd());
-        input_map.insert(PlayerAction::StickAim, DualAxis::right_stick());
+        input_map.insert_dual_axis(PlayerAction::Run, KeyboardVirtualDPad::WASD);
+        input_map.insert_dual_axis(PlayerAction::Run, GamepadVirtualDPad::DPAD);
+        input_map.insert_dual_axis(PlayerAction::StickAim, GamepadStick::RIGHT);
         input_map.insert(PlayerAction::Slash, GamepadButtonType::RightTrigger);
         input_map.insert(PlayerAction::Slash, GamepadButtonType::RightTrigger2);
         input_map.insert(PlayerAction::Slash, GamepadButtonType::LeftTrigger);
@@ -614,7 +620,7 @@ impl PlayerAction {
 #[derive(Event)]
 pub struct Slash {
     pub start: Vec2,
-    pub direction: Direction2d,
+    pub direction: Dir2,
     pub length: f32,
 }
 

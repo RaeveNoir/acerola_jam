@@ -310,7 +310,7 @@ fn spawn_enemies(
                                 },
                                 layout: TextureAtlas {
                                     layout: layouts.add(TextureAtlasLayout::from_grid(
-                                        Vec2::splat(20.0),
+                                        UVec2::splat(20),
                                         1,
                                         1,
                                         None,
@@ -362,7 +362,7 @@ fn spawn_enemies(
                                 },
                                 layout: TextureAtlas {
                                     layout: layouts.add(TextureAtlasLayout::from_grid(
-                                        Vec2::splat(16.0),
+                                        UVec2::splat(16),
                                         4,
                                         1,
                                         None,
@@ -408,7 +408,7 @@ fn spawn_enemies(
                             SpriteAnimator {
                                 sprite: SpriteBundle {
                                     sprite: Sprite {
-                                        color: Color::rgb(4.0, 4.0, 4.0),
+                                        color: Color::srgb(4.0, 4.0, 4.0),
                                         ..default()
                                     },
                                     texture: asset_server.load("embedded://BlueMask.png"),
@@ -418,7 +418,7 @@ fn spawn_enemies(
                                 },
                                 layout: TextureAtlas {
                                     layout: layouts.add(TextureAtlasLayout::from_grid(
-                                        Vec2::splat(16.0),
+                                        UVec2::splat(16),
                                         4,
                                         1,
                                         None,
@@ -464,7 +464,7 @@ fn spawn_enemies(
                             SpriteAnimator {
                                 sprite: SpriteBundle {
                                     sprite: Sprite {
-                                        color: Color::rgb(4.0, 4.0, 4.0),
+                                        color: Color::srgb(4.0, 4.0, 4.0),
                                         ..default()
                                     },
                                     texture: asset_server.load("embedded://RedMask.png"),
@@ -474,7 +474,7 @@ fn spawn_enemies(
                                 },
                                 layout: TextureAtlas {
                                     layout: layouts.add(TextureAtlasLayout::from_grid(
-                                        Vec2::splat(16.0),
+                                        UVec2::splat(16),
                                         4,
                                         1,
                                         None,
@@ -520,7 +520,7 @@ fn spawn_enemies(
                             SpriteAnimator {
                                 sprite: SpriteBundle {
                                     sprite: Sprite {
-                                        color: Color::rgb(4.0, 4.0, 4.0),
+                                        color: Color::srgb(4.0, 4.0, 4.0),
                                         ..default()
                                     },
                                     texture: asset_server.load("embedded://BlackMask.png"),
@@ -530,7 +530,7 @@ fn spawn_enemies(
                                 },
                                 layout: TextureAtlas {
                                     layout: layouts.add(TextureAtlasLayout::from_grid(
-                                        Vec2::splat(16.0),
+                                        UVec2::splat(16),
                                         4,
                                         1,
                                         None,
@@ -874,7 +874,7 @@ fn setup_dark_presence(
         },
         SpriteBundle {
             sprite: Sprite {
-                color: Color::rgba(4.0, 4.0, 4.0, 0.0),
+                color: Color::srgba(4.0, 4.0, 4.0, 0.0),
                 ..default()
             },
             texture: asset_server.load("embedded://DarkPresence.png"),
@@ -890,7 +890,7 @@ fn setup_dark_presence(
         },
         SpriteBundle {
             sprite: Sprite {
-                color: Color::rgba(4.0, 4.0, 4.0, 0.0),
+                color: Color::srgba(4.0, 4.0, 4.0, 0.0),
                 ..default()
             },
             texture: asset_server.load("embedded://DarkPresenceAttack.png"),
@@ -924,7 +924,7 @@ fn update_dark_presence(
         if presence.timer.just_finished() {
             game_state.set(GameState::DarkPresenceAttack);
         } else {
-            sprite.color.set_a(
+            sprite.color.set_alpha(
                 f32::max(presence.timer.fraction() * 0.01 - 0.006, 0.0)
                     + f32::max(
                         global.rand.gen::<f32>() * presence.timer.fraction() * 0.002 - 0.0005,
@@ -934,7 +934,7 @@ fn update_dark_presence(
         }
     } else {
         presence.timer.reset();
-        sprite.color.set_a(0.0);
+        sprite.color.set_alpha(0.0);
     }
 }
 
@@ -948,7 +948,7 @@ fn dark_presence_attack(
         return;
     }
     let (mut sprite, mut attack) = sprite.single_mut();
-    sprite.color.set_a(1.0);
+    sprite.color.set_alpha(1.0);
     attack.timer.reset();
 
     commands.spawn((
@@ -980,6 +980,6 @@ fn dark_presence_attack_timer(
 
 fn dark_presence_remove(mut sprites: Query<&mut Sprite, With<DarkPresenceSprite>>) {
     for mut sprite in sprites.iter_mut() {
-        sprite.color.set_a(0.0);
+        sprite.color.set_alpha(0.0);
     }
 }

@@ -28,7 +28,7 @@ fn setup_menu(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 225.0,
-                    color: Color::rgb(2.5, 0.25, 0.25),
+                    color: Color::srgb(2.5, 0.25, 0.25),
                     ..default()
                 },
             )
@@ -68,7 +68,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 900.0,
-                    color: Color::rgba(2.5, 0.25, 0.25, 0.0),
+                    color: Color::srgba(2.5, 0.25, 0.25, 0.0),
                     ..default()
                 },
             )
@@ -89,7 +89,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 900.0,
-                    color: Color::rgba(2.5, 0.25, 0.25, 0.0),
+                    color: Color::srgba(2.5, 0.25, 0.25, 0.0),
                     ..default()
                 },
             )
@@ -110,7 +110,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 900.0,
-                    color: Color::rgba(2.5, 0.25, 0.25, 0.0),
+                    color: Color::srgba(2.5, 0.25, 0.25, 0.0),
                     ..default()
                 },
             )
@@ -131,7 +131,7 @@ fn setup_hitcounts(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 900.0,
-                    color: Color::rgba(2.5, 0.25, 0.25, 0.0),
+                    color: Color::srgba(2.5, 0.25, 0.25, 0.0),
                     ..default()
                 },
             )
@@ -152,7 +152,7 @@ fn fade_hitcounts(
         if hitcount.timer.finished() {
             *visible = Visibility::Visible;
         }
-        text.sections[0].style.color.set_a(
+        text.sections[0].style.color.set_alpha(
             0.5 * (1.0
                 - hitcount.timer.elapsed().as_secs_f32() / hitcount.timer.duration().as_secs_f32()),
         );
@@ -185,7 +185,7 @@ fn setup_scoreboard(mut commands: Commands, asset_server: Res<AssetServer>) {
                 TextStyle {
                     font: asset_server.load("embedded://saruji.ttf"),
                     font_size: 35.0,
-                    color: Color::rgb(2.5, 0.25, 0.25),
+                    color: Color::srgb(2.5, 0.25, 0.25),
                     ..default()
                 },
             )
